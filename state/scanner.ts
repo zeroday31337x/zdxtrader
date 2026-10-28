@@ -26,6 +26,11 @@ const MIN_PROFIT_CONFIDENCE = setting('MIN_PROFIT_CONFIDENCE', 0.55);
 const MIN_MEME_VOLUME = setting('MEME_MIN_VOLUME_USD_24H', 1000000);
 const MAX_MEME_SPREAD = setting('MEME_MAX_SPREAD_BPS', 30);
 
+const timestamp = () => new Date().toISOString();
+const log = (...args: unknown[]) => console.log(`[${timestamp()}]`, ...args);
+const warn = (...args: unknown[]) => console.warn(`[${timestamp()}]`, ...args);
+const error = (...args: unknown[]) => console.error(`[${timestamp()}]`, ...args);
+
 type Candle = { start: number; close: number; volume: number };
 
 export interface MarketSnapshot {
@@ -277,7 +282,7 @@ export async function scanProducts(products = SHORT_PRODUCTS, strategy: 'short_t
         });
       }
     } catch (err: any) {
-      console.log(`[${strategy}] Skip ${symbol}: ${err.message || 'market data unavailable'}`);
+      log(`[${strategy}] Skip ${symbol}: ${err.message || 'market data unavailable'}`);
     }
   }
 
@@ -288,8 +293,8 @@ export function filterClearingFees(snapshots: MarketSnapshot[]): MarketSnapshot[
   const threshold = Math.max(0, ROUND_TRIP_FEE_BPS + MIN_EDGE_BUFFER_BPS + MIN_PROFIT_EDGE_BPS);
   const sorted = [...snapshots].sort((a, b) => (b.estimated_edge_bps ?? 0) - (a.estimated_edge_bps ?? 0));
   if (sorted[0]) {
-    console.log(`[short_term] Scanned ${snapshots.length} products`);
-    console.log(`[short_term] Best edge proxy: ${sorted[0].symbol} ${sorted[0].estimated_edge_bps.toFixed(1)} bps (need ${threshold}; predictive score, not guaranteed profit)`);
+    log(`[short_term] Scanned ${snapshots.length} products`);
+    log(`[short_term] Best edge proxy: ${sorted[0].symbol} ${sorted[0].estimated_edge_bps.toFixed(1)} bps (need ${threshold}; predictive score, not guaranteed profit)`);
   }
   return sorted.filter((item) => item.estimated_edge_bps > threshold);
 }
@@ -315,3 +320,4 @@ export async function buildBestMemeSnapshot(): Promise<MarketSnapshot | null> {
   const passing = filterMemeCandidates(snapshots);
   return passing[0] ?? null;
 }
+
