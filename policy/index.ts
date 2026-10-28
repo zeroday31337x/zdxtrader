@@ -51,8 +51,13 @@ export function decideGambler(answers: any, state: any): { action: string; size:
 
   if (direction === 'skip') return { action: 'skip', size: 0, reason: 'no clear direction' };
 
+  // Coinbase spot is long-only for this trading desk.
+  if (direction === 'short') {
+    return { action: 'skip', size: 0, reason: 'spot broker long-only; short entries disabled' };
+  }
+
   const size = Math.min(POLICY.base_size_usd, POLICY.max_size_usd);
-  return { action: direction, size, reason: 'policy approved' };
+  return { action: 'long', size, reason: 'policy approved' };
 }
 
 export function decideSpy(answers: any): { action: string; size: number; reason: string } {
@@ -71,3 +76,4 @@ export function decideMeme(answers: any, state: any) {
   const decision = decideGambler(answers, state);
   return decision.action === 'short' ? { action: 'skip', size: 0, reason: 'meme strategy is spot long-only' } : decision;
 }
+
