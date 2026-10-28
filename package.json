@@ -8,6 +8,7 @@
     "start": "node dist/src/main.js",
     "dev": "tsx src/main.ts",
     "report": "tsx src/reports/calibration.ts",
+    "dataset": "tsx reports/calibration.ts",
     "verify": "tsc --outDir verified-build && node --test tests/regression.mjs"
   },
   "dependencies": {
