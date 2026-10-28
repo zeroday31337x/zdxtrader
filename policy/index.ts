@@ -1,5 +1,9 @@
 import { tradeSize, MAX_TRADE_USD } from './limits.js';
 
+/**
+ * Policy: thresholds and combination weights in code.
+ * All operational policy values must come from env.
+ */
 const envNumber = (name: string, fallback: number) => {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
@@ -41,7 +45,10 @@ export function decideGambler(answers: any, state: any): { action: string; size:
 
   if (failures.length) return { action: 'skip', size: 0, reason: failures.join('; ') };
 
-  const direction = answers?.regime?.choice === 'trending_up' ? 'long' : answers?.regime?.choice === 'trending_down' ? 'short' : 'skip';
+  const direction = answers?.regime?.choice === 'trending_up' ? 'long'
+    : answers?.regime?.choice === 'trending_down' ? 'short'
+    : 'skip';
+
   if (direction === 'skip') return { action: 'skip', size: 0, reason: 'no clear direction' };
 
   const size = Math.min(POLICY.base_size_usd, POLICY.max_size_usd);
