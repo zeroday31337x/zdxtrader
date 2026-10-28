@@ -17,6 +17,21 @@ export interface Order {
   type: 'market';
 }
 
+/** Thrown only when the order provably did not reach the exchange. Safe to release the local lock. */
+export class NotSubmittedError extends Error {
+  constructor(message: string) { super(message); this.name = "NotSubmittedError"; }
+}
+
+/** Thrown only when the order provably did not reach the exchange. Safe to release the local lock. */
+export class NotSubmittedError extends Error {
+  constructor(message: string) { super(message); this.name = "NotSubmittedError"; }
+}
+
+/** Thrown only when the order provably did not reach the exchange. Safe to release the local lock. */
+export class NotSubmittedError extends Error {
+  constructor(message: string) { super(message); this.name = "NotSubmittedError"; }
+}
+
 export interface Fill {
   orderId: string;
   symbol: string;
@@ -54,11 +69,11 @@ export class CoinbaseBroker {
   }
 
   async place(order: Order, currentMid: number, clientOrderId = randomUUID()): Promise<Fill> {
-    assertTradeSize(order.sizeUsd);
-    if (!this.client) throw new Error('Coinbase client not initialized — missing keys');
+    try { assertTradeSize(order.sizeUsd); } catch (err: any) { throw new NotSubmittedError(err.message); }
+    if (!this.client) throw new NotSubmittedError('Coinbase client not initialized — missing keys');
 
-    if (order.side !== 'buy') throw new Error('Short entries are unsupported by this spot broker');
-    if (!Number.isFinite(order.sizeUsd) || order.sizeUsd <= 0) throw new Error('Invalid order size');
+    if (order.side !== 'buy') throw new NotSubmittedError('Short entries are unsupported by this spot broker');
+    if (!Number.isFinite(order.sizeUsd) || order.sizeUsd <= 0) throw new NotSubmittedError('Invalid order size');
     const side = order.side.toUpperCase() as 'BUY' | 'SELL';
 
     const result = await this.client.submitOrder({
@@ -72,10 +87,11 @@ export class CoinbaseBroker {
       },
     });
 
-    if (!result.success || !result.success_response?.order_id) {
-      throw new Error(`Coinbase rejected order: ${result.error_response?.message || 'no confirmed order ID'}`);
+    if (!result.success) {
+      throw new NotSubmittedError(`Coinbase rejected order: ${result.error_response?.message || 'no confirmed order ID'}`);
     }
 
+    if (!result.success_response?.order_id) throw new Error(`Coinbase accepted request without order ID for ${clientOrderId}; requires reconciliation`);
     const orderId = result.success_response.order_id;
     const { order: confirmed } = await this.client.getOrder({ order_id: orderId });
     const price = Number(confirmed.average_filled_price);

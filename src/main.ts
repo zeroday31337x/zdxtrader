@@ -5,7 +5,7 @@ import { askJev } from '../judge/index.js';
 import { decideGambler } from '../policy/index.js';
 import { RiskEngine } from '../risk/engine.js';
 import { PaperBroker } from '../broker/paper.js';
-import { CoinbaseBroker } from '../broker/coinbase.js';
+import { CoinbaseBroker, NotSubmittedError } from '../broker/coinbase.js';
 import { Filter } from '../filter/funnel.js';
 import { Book } from '../book/index.js';
 import { logDecision, logRejection } from '../logs/logger.js';

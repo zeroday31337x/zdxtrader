@@ -34,5 +34,10 @@ export class Book {
     this.save();
   }
   close() { const closed = this.open; this.open = null; this.save(); return closed; }
+  /** Clears a reservation only if still pending and matching this client order ID. */
+  release(clientOrderId: string): boolean {
+    if (this.open?.status !== "pending" || this.open.clientOrderId !== clientOrderId) return false;
+    this.open = null; this.save(); return true;
+  }
   getOpen() { return this.open; }
 }

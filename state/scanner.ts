@@ -9,12 +9,12 @@ const setting = (name: string, fallback: number): number => {
   return Number.isFinite(value) ? value : fallback;
 };
 
-const SHORT_PRODUCTS = (process.env.SCAN_PRODUCTS || 'BTC-USD,ETH-USD,SOL-USD,DOGE-USD,XRP-USD')
+export const SHORT_PRODUCTS = (process.env.SCAN_PRODUCTS || 'BTC-USD,ETH-USD,SOL-USD,DOGE-USD,XRP-USD')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
 
-const MEME_PRODUCTS = (process.env.MEME_PRODUCTS || 'DOGE-USD,SHIB-USD,PEPE-USD,BONK-USD,WIF-USD,FLOKI-USD,FARTCOIN-USD,PENGU-USD,TOSHI-USD,TRUMP-USD')
+export const MEME_PRODUCTS = (process.env.MEME_PRODUCTS || 'DOGE-USD,SHIB-USD,PEPE-USD,BONK-USD,WIF-USD,FLOKI-USD,FARTCOIN-USD,PENGU-USD,TOSHI-USD,TRUMP-USD')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
