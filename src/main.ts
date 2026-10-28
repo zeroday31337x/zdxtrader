@@ -21,15 +21,11 @@ const readEnv = (name: string, fallbackName?: string): string => {
 
 const MODE = (readEnv('MODE', 'mode') || 'paper').toLowerCase();
 const LIVE_TRADING = (readEnv('LIVE_TRADING', 'live_trading') || 'false').toLowerCase() === 'true';
-const POLL = Number(readEnv('POLL_INTERVAL_MS')) || 30000;
-const MEME_POLL = Number(readEnv('MEME_SCAN_INTERVAL_MS')) || 300000;
+const POLL = Number(readEnv('POLL_INTERVAL_MS', 'poll_interval_ms')) || 30000;
+const MEME_POLL = Number(readEnv('MEME_SCAN_INTERVAL_MS', 'meme_scan_interval_ms')) || 300000;
 
-if (!['shadow', 'paper', 'live'].includes(MODE)) {
-  throw new Error(`Invalid MODE: ${MODE}`);
-}
-if (!Number.isFinite(POLL) || POLL < 1000 || !Number.isFinite(MEME_POLL) || MEME_POLL < 60000) {
-  throw new Error('Invalid scan interval');
-}
+if (!['shadow', 'paper', 'live'].includes(MODE)) throw new Error(`Invalid MODE: ${MODE}`);
+if (!Number.isFinite(POLL) || POLL < 1000 || !Number.isFinite(MEME_POLL) || MEME_POLL < 60000) throw new Error('Invalid scan interval');
 
 const risk = new RiskEngine();
 const paperBroker = new PaperBroker();
@@ -75,6 +71,14 @@ async function assess(snapshot: MarketSnapshot) {
     book.openPosition(snapshot.symbol, executed.sizeUsd, executed.price);
   }
 
+  if (strategy === 'meme_swing' && decision.action !== 'skip' && riskCheck.approved && MODE === 'paper') {
+    executed = await paperBroker.place(
+      { symbol: snapshot.symbol, side: decision.action === 'long' ? 'buy' : 'sell', sizeUsd: decision.size, type: 'market' },
+      snapshot.mid,
+    );
+    book.openPosition(snapshot.symbol, executed.sizeUsd, executed.price);
+  }
+
   if (strategy === 'short_term' && decision.action !== 'skip' && riskCheck.approved && MODE === 'live' && LIVE_TRADING && coinbaseBroker.isReady()) {
     const clientOrderId = randomUUID();
     book.reserve(snapshot.symbol, decision.size, clientOrderId);
@@ -92,7 +96,24 @@ async function assess(snapshot: MarketSnapshot) {
     }
   }
 
-  const effectiveMode = strategy === 'meme_swing' ? 'shadow' : MODE;
+  if (strategy === 'meme_swing' && decision.action !== 'skip' && riskCheck.approved && MODE === 'live' && LIVE_TRADING && coinbaseBroker.isReady()) {
+    const clientOrderId = randomUUID();
+    book.reserve(snapshot.symbol, decision.size, clientOrderId);
+    try {
+      executed = await coinbaseBroker.place(
+        { symbol: snapshot.symbol, side: decision.action === 'long' ? 'buy' : 'sell', sizeUsd: decision.size, type: 'market' },
+        snapshot.mid,
+        clientOrderId,
+      );
+      book.openPosition(snapshot.symbol, executed.sizeUsd, executed.price);
+    } catch (err: any) {
+      await logRejection({ id: candidate.id, strategy, check: 'broker', reason: err.message, clientOrderId });
+      console.error(`[${strategy}] Live order unresolved; entries locked pending reconciliation:`, err.message);
+      return;
+    }
+  }
+
+  const effectiveMode = MODE;
   const modeSummary = MODE === 'live' && !LIVE_TRADING
     ? 'live disabled by LIVE_TRADING=false'
     : MODE === 'live' && !coinbaseBroker.isReady()
@@ -136,7 +157,7 @@ async function cycle() {
 }
 
 async function main() {
-  console.log(`Dual scanner starting: short_term=${MODE}; meme_swing=shadow; live_trading=${LIVE_TRADING}; Coinbase ready=${coinbaseBroker.isReady()}`);
+  console.log(`Dual scanner starting: short_term=${MODE}; meme_swing=${MODE}; live_trading=${LIVE_TRADING}; Coinbase ready=${coinbaseBroker.isReady()}`);
 
   if (MODE === 'live') {
     if (!LIVE_TRADING) {
