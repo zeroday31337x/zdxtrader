@@ -1,0 +1,140 @@
+{
+  "selected": [
+    {
+      "universe": "majors",
+      "selected_from_development": "relative_strength",
+      "development_pnl": -1.6322223502557733,
+      "validation_pnl": -3.0143020631736164,
+      "validation_trades": 14
+    },
+    {
+      "universe": "memes",
+      "selected_from_development": "breakout",
+      "development_pnl": -4.427584825075385,
+      "validation_pnl": -3.2169779330942276,
+      "validation_trades": 26
+    }
+  ],
+  "candidates": [
+    {
+      "universe": "majors",
+      "strategy": "momentum",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": false,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -5.727822826024536,
+      "validation_trades": 23
+    },
+    {
+      "universe": "majors",
+      "strategy": "relative_strength",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": false,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -3.0143020631736164,
+      "validation_trades": 14
+    },
+    {
+      "universe": "majors",
+      "strategy": "breakout",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": false,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -5.029043644193877,
+      "validation_trades": 21
+    },
+    {
+      "universe": "majors",
+      "strategy": "pullback",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": false,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -5.154858148592439,
+      "validation_trades": 15
+    },
+    {
+      "universe": "memes",
+      "strategy": "momentum",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": true,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -10.188955244043072,
+      "validation_trades": 34
+    },
+    {
+      "universe": "memes",
+      "strategy": "relative_strength",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": true,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -10.461506634602031,
+      "validation_trades": 34
+    },
+    {
+      "universe": "memes",
+      "strategy": "breakout",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": false,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -3.2169779330942276,
+      "validation_trades": 26
+    },
+    {
+      "universe": "memes",
+      "strategy": "pullback",
+      "checks": {
+        "development_positive": false,
+        "validation_positive": false,
+        "minimum_30_validation_trades": false,
+        "both_validation_halves_positive": false,
+        "stress_positive": false,
+        "positive_without_best_trade": false
+      },
+      "passes_all": false,
+      "validation_pnl": -3.5068024135235873,
+      "validation_trades": 25
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "end": 1793152800,
+  "start": 1777600800,
+  "split": 1787968800,
+  "symbols": [
+    "BTC-USD",
+    "ETH-USD",
+    "SOL-USD",
+    "XRP-USD",
+    "DOGE-USD",
+    "SHIB-USD",
+    "PEPE-USD",
+    "BONK-USD",
+    "WIF-USD",
+    "FLOKI-USD",
+    "FARTCOIN-USD",
+    "PENGU-USD",
+    "TOSHI-USD",
+    "TRUMP-USD"
+  ],
+  "bar_seconds": 3600,
+  "strategies": [
+    "momentum",
+    "relative_strength",
+    "breakout",
+    "pullback"
+  ],
+  "notional": 10,
+  "starting_cash": 100,
+  "taker_fee": 0.009,
+  "maker_sensitivity_fee": 0.005,
+  "slippage_per_side": 0.001,
+  "stress_slippage_per_side": 0.0025,
+  "max_hold_hours": 72,
+  "stop_close_return": -0.05,
+  "target_close_return": 0.1,
+  "selection": "one global position; highest relative 24h return among qualifiers; lexical ties",
+  "execution": "signal on completed hourly bar; trade at next hourly open with adverse slippage; close-based exit rules; no intrabar fill assumptions",
+  "primary": "fixed rules; validation last 60 days; no parameter tuning",
+  "limitations": [
+    "current watchlist survivorship and historical availability bias",
+    "historical spread/depth unavailable; slippage scenario only",
+    "no inference cost included; deterministic strategy test",
+    "maker case sensitivity only; no maker fill simulation",
+    "no tick-level stops; gap risk reflected in next open",
+    "not a forecast or proof of future profitability"
+  ],
+  "evidence_threshold": {
+    "validation_trades_at_least": 30,
+    "positive_both_validation_halves": true,
+    "positive_at_25bps_slippage": true,
+    "positive_without_best_trade": true,
+    "positive_development": true,
+    "note": "screening threshold only; any passing candidate still needs untouched forward paper testing"
+  }
+}

@@ -1,0 +1,114 @@
+[
+  {
+    "symbol": "BTC-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "4b022376e33517458f18f55e3d5c8eb0c83707ec77fa047960d2eab9e803430b"
+  },
+  {
+    "symbol": "ETH-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "7c2635ca065eb738569ff31428c377edbe1fdee82235ab63afbf3f6045b922c2"
+  },
+  {
+    "symbol": "SOL-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "98a70b641d3e798a686ff72be4fda65e5783445a25224b1ef0e5339df12b772f"
+  },
+  {
+    "symbol": "XRP-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "1bdfb3671db7beed19431f52a3811ebb4228d478a84dfbbf647258040ddeacf1"
+  },
+  {
+    "symbol": "DOGE-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "b1e9daaacba0cf54583bab3c796557769b3292e1a8e2f3d7dad346b158db44f8"
+  },
+  {
+    "symbol": "SHIB-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "54cd36e8eb2879b589e719281535fb8d972cee5842919afe1b0dfe461fc5ab52"
+  },
+  {
+    "symbol": "PEPE-USD",
+    "bars": 4314,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "c2a371a91365a8e34ef906a0750a8df76c3878bb618ed04728e8afd83cfcde09"
+  },
+  {
+    "symbol": "BONK-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "93de410dfa6580bd7c64dd5f081f960576c68a5a0952cea67b96a0a06a82e59e"
+  },
+  {
+    "symbol": "WIF-USD",
+    "bars": 4261,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "3196ecdc19633291575ebf9aa44be5a1a3d96a90abafe7e3a0b0f9db100a2657"
+  },
+  {
+    "symbol": "FLOKI-USD",
+    "bars": 4114,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "e77713d0daf881c815ba840f0eb77c3e4eb291b2279f46b5b3fcb5d9dfbeb6e7"
+  },
+  {
+    "symbol": "FARTCOIN-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "0d18aad22e27319341bef8e547bc724701b136325656512c4b87b126c8ed59b9"
+  },
+  {
+    "symbol": "PENGU-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "f108799a0ce16ef3ce553046c03da32b6a79d30ae69b2e3f8396bc3535dca336"
+  },
+  {
+    "symbol": "TOSHI-USD",
+    "bars": 4315,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "164d469e3e9be4c29be4fc3a989bbb91b93369196645e4703383d61cbdd9ad31"
+  },
+  {
+    "symbol": "TRUMP-USD",
+    "bars": 4295,
+    "expected": 4320,
+    "first": 1777600800,
+    "last": 1793149200,
+    "sha256": "18416e1a9c1d65e9dca003d421a9b7f91a70cdadf9691d476c157005a2c34788"
+  }
+]

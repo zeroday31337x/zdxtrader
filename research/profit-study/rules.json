@@ -1,0 +1,7 @@
+{
+  "momentum": "24h return >2%, close>SMA72, 24h volume ratio>=1, BTC24h>0",
+  "relative_strength": "24h return>0 and >BTC24h+2%, close>SMA72, volume ratio>=1, BTC24h>0",
+  "breakout": "close>previous24h high, current quote-volume>1.5x previous24h mean, BTC24h>0",
+  "pullback": "close>SMA168, SMA24>SMA72, 6h return<0, 1h return>0, 24h return>BTC24h, BTC24h>0",
+  "exit": "close loss>=5%, close gain>=10%, 72h max, negative24h return after24h; next open"
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "universe": "majors",
+    "strategy": "momentum",
+    "trades": 23,
+    "cost_free_pnl": -1.1449902464023864,
+    "after_cost_pnl": -5.727822826024536,
+    "total_cost_drag": 4.582832579622149
+  },
+  {
+    "universe": "majors",
+    "strategy": "relative_strength",
+    "trades": 14,
+    "cost_free_pnl": -0.21950948449637053,
+    "after_cost_pnl": -3.0143020631736164,
+    "total_cost_drag": 2.794792578677246
+  },
+  {
+    "universe": "majors",
+    "strategy": "breakout",
+    "trades": 21,
+    "cost_free_pnl": -0.8424900054827731,
+    "after_cost_pnl": -5.029043644193877,
+    "total_cost_drag": 4.1865536387111035
+  },
+  {
+    "universe": "majors",
+    "strategy": "pullback",
+    "trades": 15,
+    "cost_free_pnl": -2.1818114852905524,
+    "after_cost_pnl": -5.154858148592439,
+    "total_cost_drag": 2.9730466633018864
+  },
+  {
+    "universe": "memes",
+    "strategy": "momentum",
+    "trades": 34,
+    "cost_free_pnl": -3.4334477760172177,
+    "after_cost_pnl": -10.188955244043072,
+    "total_cost_drag": 6.755507468025854
+  },
+  {
+    "universe": "memes",
+    "strategy": "relative_strength",
+    "trades": 34,
+    "cost_free_pnl": -3.7090250101125974,
+    "after_cost_pnl": -10.461506634602031,
+    "total_cost_drag": 6.752481624489434
+  },
+  {
+    "universe": "memes",
+    "strategy": "breakout",
+    "trades": 26,
+    "cost_free_pnl": 1.9997849403114003,
+    "after_cost_pnl": -3.2169779330942276,
+    "total_cost_drag": 5.216762873405628
+  },
+  {
+    "universe": "memes",
+    "strategy": "pullback",
+    "trades": 25,
+    "cost_free_pnl": 1.504724486406701,
+    "after_cost_pnl": -3.5068024135235873,
+    "total_cost_drag": 5.011526899930288
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "purpose": "Broader exploratory historical screen; no live execution",
+  "source": "../profit-study/candles; 180 hourly days; current watchlist of 14 USD spot products",
+  "reuse_disclosure": "The history, including the recent 60 days, was examined in the prior study. This is exploratory reuse, not a new untouched validation set. No new strategy parameters are tuned after the new results.",
+  "notional": 10,
+  "capital": 100,
+  "taker_fee": 0.009,
+  "maker_fee": 0.005,
+  "market_slippage_each_side": 0.001,
+  "stress_slippage_each_side": 0.0025,
+  "limit_model": "Post-only hypothetical: buy limit 0.25% below last completed close; require next hour low to trade 0.10% below limit and next open above limit; otherwise cancel. This is a conditional-fill estimate without queue data. Market exits pay taker fees and adverse slippage. No same-hour exits.",
+  "strategies": {
+    "rsi_rebound": "Simple-mean 14h RSI crosses upward through 30; exit RSI>=60, -6% closing stop or 120h maximum.",
+    "range_reversion": "24h close z-score<-1.5 and 1h return>0, abs(BTC24h return)<3%; exit close>=SMA24, -6% stop or 72h maximum.",
+    "capitulation_rebound": "24h return<=-8%, 1h return>0 and 24h volume ratio>=1.5; exit +8%, -8% or 120h maximum.",
+    "trend_dip": "Close>SMA168, 24h return<-3%, 1h return>0; exit +8%, -6% or 168h maximum.",
+    "slow_trend": "Close>SMA168, SMA72>SMA168 and BTC close>SMA168; exit close<SMA72 after 24h, -8%, or 336h maximum.",
+    "weekly_breakout": "Close>previous168h high, 24h volume ratio>=1, BTC close>SMA168; exit 10% trailing closing drawdown, -8% or 336h maximum.",
+    "relative_reversion": "Coin/BTC close ratio 72h z-score<-2, 1h coin return>0 and BTC24h return>0; spot long coin only; exit ratio z-score>=0, -6% or 120h maximum.",
+    "weekly_rotation": "Every 168h choose highest positive 168h return among eligible coins if BTC168h return>0; keep same coin without extra orders; switch or go to cash only at next weekly boundary. No short leg."
+  },
+  "risk_limits": "One position at a time per independently simulated strategy; no leverage or averaging down; stops use completed closes and next open, not guaranteed intrabar fills.",
+  "checks": "Profit after costs; stressed-cost result; profit after dropping best trade; four chronological 30d test folds for a selector fitted on only the preceding 60d; prefer cash if no training candidate has positive net P&L and >=5 trades. Selected evidence is still exploratory, not independent confirmation.",
+  "excluded": "No historical order-book/tick/transfer/funding/options data. No claims about arbitrage, market-making or leveraged profitability can be established from candles. Inference costs excluded."
+}
