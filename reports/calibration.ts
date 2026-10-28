@@ -3,6 +3,7 @@ import path from 'path';
 import { scanProducts } from '../state/scanner.js';
 
 export const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+const DATASET_REFRESH_MS = Number(process.env.DATASET_REFRESH_MS ?? (10 * 60 * 1000));
 
 export interface DatasetRow {
   timestamp: string;
@@ -214,9 +215,23 @@ export async function writeDatasetToFile(outputPath = path.join(process.cwd(), '
   return dataset;
 }
 
+export async function refreshDatasetLoop(intervalMs: number = DATASET_REFRESH_MS, outputPath = path.join(process.cwd(), 'logs', 'market-dataset.jsonl')) {
+  const run = async () => {
+    try {
+      const dataset = await writeDatasetToFile(outputPath);
+      console.log(`[dataset] Refreshed market dataset with ${dataset.length} rows.`);
+    } catch (err: any) {
+      console.error('[dataset] Refresh failed:', err?.message ?? err);
+    }
+  };
+
+  await run();
+  setInterval(run, intervalMs);
+}
+
 async function main() {
-  const dataset = await writeDatasetToFile();
-  console.log(`Built ${dataset.length} trading dataset rows.`);
+  const intervalMs = Number(process.env.DATASET_REFRESH_MS ?? 10 * 60 * 1000);
+  await refreshDatasetLoop(intervalMs);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
