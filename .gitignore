@@ -9,3 +9,17 @@ logs/*.jsonl
 .env.*
 !.env.example
 node_modules/
+
+# Runtime analysis, ownership locks and risk ledger
+reports/latest-analysis.json
+reports/analysis-*.jsonl
+state/runner-*.pid
+state/risk-*.json
+reports/meta-*.json
+reports/meta-*.jsonl
+reports/correlations.json
+state/meta-agent*.json
+state/meta-agent.pid
+state/dataset*.json
+state/dataset*.pid
+reports/dataset-manifest.json

@@ -14,4 +14,10 @@ export async function logRejection(rejection) {
     const file = path.join(LOG_DIR, `rejections-${new Date().toISOString().slice(0, 10)}.jsonl`);
     await fs.appendFile(file, JSON.stringify({ ...rejection, timestamp: new Date().toISOString() }) + '\n');
 }
+/** Execution and position analysis events have a separate schema from model entry decisions. */
+export async function logExecution(entry) {
+    await ensureDir();
+    const file = path.join(LOG_DIR, `execution-${new Date().toISOString().slice(0, 10)}.jsonl`);
+    await fs.appendFile(file, JSON.stringify(entry) + '\n');
+}
 //# sourceMappingURL=logger.js.map

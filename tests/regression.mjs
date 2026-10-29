@@ -22,7 +22,16 @@ for (const invalid of [undefined, null, noul(NaN), noul(Infinity), noul(-1), nou
  test(`invalid quality is rejected: ${JSON.stringify(invalid)}`,()=>{const a=answers();a.setup_quality=invalid;assert.match(decideGambler(a,{}).reason,/invalid/);});
 }
 test('missing answers safely skip',()=>assert.equal(decideGambler(undefined,{}).action,'skip'));
-test('ranging does not produce an entry',()=>{const a=answers();a.regime.choice='ranging';assert.equal(decideGambler(a,{}).reason,'no clear direction');});
+test('uptrend filter is optional and never produces a short sale',()=>{
+ const old=process.env.REQUIRE_UPTREND;
+ try {
+  for (const regime of ['trending_down','ranging','volatile','trending_up']) {
+   const a=answers();a.regime.choice=regime;
+   process.env.REQUIRE_UPTREND='false';assert.equal(decideGambler(a,{}).action,'long');
+   process.env.REQUIRE_UPTREND='true';assert.equal(decideGambler(a,{}).action,regime==='trending_up'?'long':'skip');
+  }
+ } finally {process.env.REQUIRE_UPTREND=old;}
+});
 test('pending and confirmed positions survive new Book instances',()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jev-test-'));const file=path.join(dir,'position.json');
  try {const b=new Book(file);b.reserve('BTC-USD',16,'client-1');const restored=new Book(file);assert.equal(restored.hasOpen(),true);assert.equal(restored.getOpen().clientOrderId,'client-1');assert.throws(()=>restored.reserve('SOL-USD',16,'client-2'));restored.openPosition('BTC-USD',15.9,100);assert.equal(new Book(file).getOpen().status,'open');restored.close();assert.equal(new Book(file).hasOpen(),false);} finally {fs.rmSync(dir,{recursive:true,force:true});}
@@ -41,7 +50,7 @@ import { PaperBroker } from '../verified-build/broker/paper.js';
 import { decideMeme } from '../verified-build/policy/index.js';
 import { completedCandles, historyFeatures, filterMemeCandidates, scanProducts, SHORT_PRODUCTS, MEME_PRODUCTS } from '../verified-build/state/scanner.js';
 for (const value of [0, .1, .5, .65, .8, 1]) test(`fixed $9 sizing for probability ${value}`,()=>{const n=tradeSize(value);assert.equal(n,9);});
-for (const value of [NaN,Infinity,-1,0,4.99,9.01,10,10.01,100]) {
+for (const value of [NaN,Infinity,-1,0,.99,9.01,10,10.01,100]) {
  test(`all order entry boundaries reject ${value}`,async()=>{
   assert.throws(()=>assertTradeSize(value));
   assert.equal(new RiskEngine().check({size:value,symbol:'BTC-USD'},{}).approved,false);
@@ -54,7 +63,7 @@ test('MAX_POSITION_USD cannot raise the $9 hard ceiling',()=>{
  try {assert.equal(new RiskEngine().check({size:11,symbol:'BTC-USD'},{}).approved,false);} finally {if(old===undefined)delete process.env.MAX_POSITION_USD;else process.env.MAX_POSITION_USD=old;}
 });
 test('exchange minimum never causes oversizing',()=>assert.equal(new RiskEngine().check({size:6,symbol:'TEST-USD'},{quote_min_size:7}).approved,false));
-test('meme strategy never recommends short',()=>{const a=answers();a.regime.choice='trending_down';assert.equal(decideMeme(a,{}).action,'skip');});
+test('meme strategy never recommends short',()=>{const a=answers();a.regime.choice='trending_down';assert.notEqual(decideMeme(a,{}).action,'short');});
 test('meme and short-term universes do not overlap',()=>assert.ok(SHORT_PRODUCTS.every(p=>!MEME_PRODUCTS.includes(p))));
 const clock=Date.UTC(2026,9,28,2,0,0),end=clock/1000;
 const bars=Array.from({length:49},(_,i)=>({start:String(end-(49-i)*3600),close:String(100+i),volume:'1000'}));
@@ -75,3 +84,54 @@ test('unsupported product is skipped instead of fabricated',async()=>{
 
 test('valid budget is exactly $9 for both strategies',()=>{assert.equal(decideGambler(answers(),{}).size,9);assert.equal(decideMeme(answers(),{}).size,9);});
 test('broker risk ceiling cannot exceed $9',()=>{assert.throws(()=>assertTradeSize(9.01));assert.doesNotThrow(()=>assertTradeSize(9));});
+
+test('daily loss boundary blocks entries and invalid P&L is rejected',()=>{
+ const previous=process.env.DAILY_LOSS_LIMIT_USD;
+ try {
+  process.env.DAILY_LOSS_LIMIT_USD='1';
+  const risk=new RiskEngine();risk.recordPnl(-1);
+  assert.equal(risk.check({size:9,symbol:'BTC-USD'},{}).approved,false);
+  assert.throws(()=>risk.recordPnl(NaN),/Invalid/);
+  for(const value of ['NaN','0','-1']) {
+   process.env.DAILY_LOSS_LIMIT_USD=value;
+   assert.equal(new RiskEngine().check({size:9,symbol:'BTC-USD'},{}).approved,false);
+  }
+ } finally {if(previous===undefined)delete process.env.DAILY_LOSS_LIMIT_USD;else process.env.DAILY_LOSS_LIMIT_USD=previous;}
+});
+test('zero verified balance cannot authorize an entry',()=>{
+ assert.equal(new RiskEngine().check({size:5,symbol:'BTC-USD'},{account_balance_usd:0}).approved,false);
+});
+test('reservation release requires matching pending intent and survives restart',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jev-release-'));const file=path.join(dir,'position.json');
+ try {
+  const book=new Book(file);book.reserve('BTC-USD',9,'client');
+  assert.equal(book.release('other'),false);assert.equal(new Book(file).hasOpen(),true);
+  assert.equal(book.release('client'),true);assert.equal(new Book(file).hasOpen(),false);
+  book.openPosition('BTC-USD',9,100);assert.equal(book.release('client'),false);
+ } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+import { flushFailedReservation } from '../verified-build/book/recovery.js';
+test('five-minute cleanup requires proof and never clears uncertain or filled orders',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jev-ttl-'));const file=path.join(dir,'position.json');
+ try {
+  const b=new Book(file);b.reserve('BTC-USD',9,'ttl-id');
+  const created=Date.parse(b.getOpen().entryTime);
+  const proof={clientOrderId:'ttl-id',check:'broker',notSubmitted:true,timestamp:new Date(created).toISOString()};
+  assert.equal(flushFailedReservation(b,[proof],created+299999),false);
+  assert.equal(flushFailedReservation(b,[],created+300000),false);
+  assert.equal(flushFailedReservation(b,[{...proof,notSubmitted:false}],created+300000),false);
+  assert.equal(flushFailedReservation(b,[{...proof,clientOrderId:'other'}],created+300000),false);
+  assert.equal(flushFailedReservation(b,[proof],created+300000),true);
+  assert.equal(new Book(file).hasOpen(),false);
+  b.openPosition('BTC-USD',9,100);
+  assert.equal(flushFailedReservation(b,[proof],created+600000),false);
+ } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('$1 entries meet the application minimum',async()=>{
+ assert.doesNotThrow(()=>assertTradeSize(1));
+ assert.equal(new RiskEngine().check({size:1,symbol:'BTC-USD'},{quote_min_size:1}).approved,true);
+ const fill=await new PaperBroker().place({...order,sizeUsd:1},100);
+ assert.equal(fill.sizeUsd,1);
+});

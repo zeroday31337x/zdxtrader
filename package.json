@@ -7,9 +7,12 @@
     "build": "tsc",
     "start": "node dist/src/main.js",
     "dev": "tsx src/main.ts",
-    "report": "tsx src/reports/calibration.ts",
+    "report": "tsx reports/calibration.ts",
     "dataset": "tsx reports/calibration.ts",
-    "verify": "tsc --outDir verified-build && node --test tests/regression.mjs"
+    "verify": "tsc --outDir verified-build && node tests/run.mjs",
+    "analyze": "tsx reports/analyze.ts",
+    "analyze:meta": "tsx reports/meta-analysis.ts",
+    "dataset:once": "tsx reports/calibration.ts --once"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0",

@@ -1,27 +1,22 @@
-import { tradeSize, MAX_TRADE_USD } from './limits.js';
+import { envNumber, envBoolean } from './env.js';
+import { MAX_TRADE_USD } from './limits.js';
 
 /**
- * Policy: thresholds and combination weights in code.
+ * Policy: thresholds are loaded from .env.
  * All operational policy values must come from env.
  */
-const envNumber = (name: string, fallback: number) => {
-  const raw = process.env[name];
-  if (raw === undefined || raw === '') return fallback;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : fallback;
-};
 
 export const POLICY = {
-  min_setup_score: envNumber('MIN_SETUP_SCORE', 0.2),
-  min_worth_trading_noul: envNumber('MIN_WORTH_TRADING_NOUL', 0.3),
-  max_toxicity_noul: envNumber('MAX_TOXICITY_NOUL', 0.6),
-  max_inventory_risk_noul: envNumber('MAX_INVENTORY_RISK_NOUL', 0.4),
-  min_spread_attractive: envNumber('MIN_SPREAD_ATTRACTIVE', 0.6),
-  require_skilled: true,
-  min_consistency: envNumber('MIN_CONSISTENCY', 0.75),
-  max_rug_noul: envNumber('MAX_RUG_NOUL', 0.2),
-  base_size_usd: envNumber('BASE_SIZE_USD', 5),
-  max_size_usd: Math.min(MAX_TRADE_USD, envNumber('MAX_POSITION_USD', MAX_TRADE_USD)),
+  min_setup_score: envNumber('MIN_SETUP_SCORE'),
+  min_worth_trading_noul: envNumber('MIN_WORTH_TRADING_NOUL'),
+  max_toxicity_noul: envNumber('MAX_TOXICITY_NOUL'),
+  max_inventory_risk_noul: envNumber('MAX_INVENTORY_RISK_NOUL'),
+  min_spread_attractive: envNumber('MIN_SPREAD_ATTRACTIVE'),
+  require_skilled: envBoolean('REQUIRE_SKILLED'),
+  min_consistency: envNumber('MIN_CONSISTENCY'),
+  max_rug_noul: envNumber('MAX_RUG_NOUL'),
+  base_size_usd: envNumber('BASE_SIZE_USD'),
+  max_size_usd: Math.min(MAX_TRADE_USD, envNumber('MAX_POSITION_USD')),
 };
 
 export function decideGambler(answers: any, state: any): { action: string; size: number; reason: string } {
@@ -45,15 +40,19 @@ export function decideGambler(answers: any, state: any): { action: string; size:
 
   if (failures.length) return { action: 'skip', size: 0, reason: failures.join('; ') };
 
-  const direction = answers?.regime?.choice === 'trending_up' ? 'long'
-    : answers?.regime?.choice === 'trending_down' ? 'short'
-    : 'skip';
+  // Short-term describes the holding horizon. All entry orders are purchases.
+  if (envBoolean('REQUIRE_UPTREND') && answers?.regime?.choice !== 'trending_up') {
+    return { action: 'skip', size: 0, reason: 'uptrend required by REQUIRE_UPTREND' };
+  }
 
-  if (direction === 'skip') return { action: 'skip', size: 0, reason: 'no clear direction' };
-
-  // Coinbase spot is long-only for this trading desk.
-  if (direction === 'short') {
-    return { action: 'skip', size: 0, reason: 'spot broker long-only; short entries disabled' };
+  if (envBoolean('REQUIRE_FIB_BUY_ZONE') && !state?.golden?.in_buy_zone) {
+    return { action:'skip', size:0, reason:'outside configured Fibonacci buy zone' };
+  }
+  if ((state?.venue_history?.upward_fraction ?? 0) < envNumber('MIN_UPWARD_VENUE_FRACTION')) {
+    return { action:'skip', size:0, reason:'insufficient upward venue agreement' };
+  }
+  if (envBoolean('REQUIRE_TARGET_MARGIN') && (!state?.golden?.valid || state.golden.estimated_net_target_margin_bps < envNumber('MIN_TARGET_NET_MARGIN_BPS'))) {
+    return { action:'skip', size:0, reason:'projected target does not clear configured net margin' };
   }
 
   const size = Math.min(POLICY.base_size_usd, POLICY.max_size_usd);
@@ -61,14 +60,14 @@ export function decideGambler(answers: any, state: any): { action: string; size:
 }
 
 export function decideSpy(answers: any): { action: string; size: number; reason: string } {
-  if (answers.wallet_skill?.choice !== 'skilled') return { action: 'skip', size: 0, reason: 'not skilled' };
+  if (POLICY.require_skilled && answers.wallet_skill?.choice !== 'skilled') return { action: 'skip', size: 0, reason: 'not skilled' };
   if ((answers.move_consistent?.noul ?? 0) < POLICY.min_consistency) return { action: 'skip', size: 0, reason: 'inconsistent' };
   if ((answers.rug_risk?.noul ?? 1) > POLICY.max_rug_noul) return { action: 'skip', size: 0, reason: 'rug risk' };
 
   const mirror = answers.mirror_decision?.choice;
   if (mirror === 'skip') return { action: 'skip', size: 0, reason: 'choice skip' };
   const size = mirror === 'full' ? POLICY.base_size_usd : POLICY.base_size_usd * 0.5;
-  if (size < 5) return { action: 'skip', size: 0, reason: 'sized entry below $5 minimum' };
+  if (size < envNumber('MIN_TRADE_USD')) return { action: 'skip', size: 0, reason: 'sized entry below MIN_TRADE_USD' };
   return { action: 'mirror', size, reason: 'approved' };
 }
 

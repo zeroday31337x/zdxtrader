@@ -1,0 +1,59 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Lifecycle } from './lifecycle.js';
+function fixture() { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-')); const file = path.join(dir, 'state.json'); let fill = null; const intents = []; const adapter = { submit: async (i) => { intents.push(i); }, reconcile: async () => fill }; return { file, adapter, intents, setFill: (f) => { fill = f; }, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) }; }
+test('durable unknown order blocks a second entry after restart', async () => { const f = fixture(); try {
+    let l = new Lifecycle(f.file, f.adapter);
+    await l.enter('BTC-USD', 19.5, .009, 1);
+    assert.equal(f.intents[0].quoteUsd, 9);
+    l = new Lifecycle(f.file, f.adapter);
+    await assert.rejects(l.enter('BTC-USD', 19.5, .009, 1), /unresolved/);
+}
+finally {
+    f.cleanup();
+} });
+test('fees and proportional cost basis survive restart and exit', async () => { const f = fixture(); try {
+    f.setFill({ orderId: 'buy', quantity: .09, price: 100, fees: .081, terminal: true });
+    let l = new Lifecycle(f.file, f.adapter);
+    await l.enter('BTC-USD', 19.5, .009, 1);
+    l = new Lifecycle(f.file, f.adapter);
+    f.setFill({ orderId: 'sell', quantity: .09, price: 110, fees: .0891, terminal: true });
+    await l.exitIfNeeded(110, Date.now(), { stop: .05, target: .05, trailing: .1, maxHoldHours: 72 });
+    assert.equal(l.snapshot().position, null);
+    assert.ok(Math.abs(l.snapshot().realized - .7299) < 1e-8);
+}
+finally {
+    f.cleanup();
+} });
+test('fee reserve rejects insufficient balance before submission', async () => { const f = fixture(); try {
+    const l = new Lifecycle(f.file, f.adapter);
+    await assert.rejects(l.enter('BTC-USD', 9, .009, 1), /balance/);
+    assert.equal(f.intents.length, 0);
+}
+finally {
+    f.cleanup();
+} });
+test('terminal partial entry retains only actual quantity', async () => { const f = fixture(); try {
+    f.setFill({ orderId: 'partial', quantity: .04, price: 100, fees: .036, terminal: true });
+    const l = new Lifecycle(f.file, f.adapter);
+    await l.enter('BTC-USD', 19.5, .009, 1);
+    assert.equal(l.snapshot().position?.quantity, .04);
+    assert.equal(l.snapshot().position?.cost, 4.036);
+}
+finally {
+    f.cleanup();
+} });
+test('nonterminal partial entry remains locked', async () => { const f = fixture(); try {
+    f.setFill({ orderId: 'partial', quantity: .04, price: 100, fees: .036, terminal: false });
+    const l = new Lifecycle(f.file, f.adapter);
+    await l.enter('BTC-USD', 19.5, .009, 1);
+    assert.ok(l.snapshot().pending);
+    assert.equal(l.snapshot().position, null);
+}
+finally {
+    f.cleanup();
+} });
+//# sourceMappingURL=lifecycle.test.js.map

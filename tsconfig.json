@@ -7,11 +7,29 @@
     "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
+    "skipLibCheck": false,
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "sourceMap": true
   },
-  "include": ["src/**/*", "state/**/*", "questions/**/*", "policy/**/*", "risk/**/*", "broker/**/*", "filter/**/*", "book/**/*", "logs/**/*", "judge/**/*", "reports/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*",
+    "state/**/*",
+    "questions/**/*",
+    "policy/**/*",
+    "risk/**/*",
+    "broker/**/*",
+    "filter/**/*",
+    "book/**/*",
+    "logs/**/*",
+    "judge/**/*",
+    "reports/**/*",
+    "execution/**/*",
+    "market/**/*",
+    "inference/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

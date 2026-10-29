@@ -1,3 +1,4 @@
+import { envText } from '../policy/env.js';
 import { TypeSafeClient, noul, choice, score } from '@typesafe-ai/sdk';
 import dotenv from 'dotenv';
 
@@ -8,18 +9,11 @@ const readEnv = (name: string, fallbackName?: string): string => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
-const MODEL = process.env.MODEL_VERSION || 'jev-1.13.0';
+const MODEL = envText('MODEL_VERSION');
 const API_KEY = readEnv('TYPESAFE_API_KEY', 'typesafe_api_key');
 const DESK_SECRET = readEnv('DESK_SECRET', 'desk_secret');
 
-if (!API_KEY) {
-  throw new Error('TYPESAFE_API_KEY missing. Set in .env. Never commit it.');
-}
-
-const client = new TypeSafeClient({
-  apiKey: API_KEY,
-  defaultModel: MODEL,
-});
+let client: TypeSafeClient | undefined;
 
 export interface JudgeRequest {
   secret: string;
@@ -43,6 +37,8 @@ export async function askJev(req: JudgeRequest): Promise<JudgeResponse> {
     throw new Error('Invalid desk secret');
   }
 
+  if(!API_KEY)throw Error('TYPESAFE_API_KEY is required only for model decision mode');
+  client ??= new TypeSafeClient({apiKey:API_KEY,defaultModel:MODEL});
   const response = await client.systemOne({
     state: typeof req.state === 'string' ? req.state : JSON.stringify(req.state),
     questions: req.questions,

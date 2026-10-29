@@ -1,3 +1,4 @@
+import { envNumber } from '../policy/env.js';
 import { assertTradeSize } from '../policy/limits.js';
 /**
  * Paper broker. Same interface a live one would use.
@@ -23,13 +24,13 @@ export interface Fill {
 
 export class PaperBroker {
   private positions = new Map<string, { size: number; avgPrice: number }>();
-  private cash = 10000; // starting paper balance
+  private cash = envNumber('PAPER_START_BALANCE_USD'); // starting paper balance
 
   async place(order: Order, currentMid: number): Promise<Fill> {
     assertTradeSize(order.sizeUsd);
     const price = currentMid; // assume mid fill for simplicity
     const qty = order.sizeUsd / price;
-    const fees = order.sizeUsd * 0.001; // 10 bps
+    const fees = order.sizeUsd * envNumber('PAPER_FEE_BPS') / 10000; // 10 bps
 
     // Update position (simplified long-only for skeleton)
     const existing = this.positions.get(order.symbol) || { size: 0, avgPrice: 0 };

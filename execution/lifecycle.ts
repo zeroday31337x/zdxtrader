@@ -1,3 +1,5 @@
+import { envNumber } from '../policy/env.js';
+import { assertTradeSize } from '../policy/limits.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -30,11 +32,13 @@ export class Lifecycle {
   private rollDay(){if(this.state.day!==day(this.now())){this.state.day=day(this.now());this.state.realized=0;}}
   async enter(symbol:string,availableUsd:number,entryFeeRate:number,dailyLossLimit:number){
     this.rollDay();
+    const entryUsd = Math.min(envNumber('BASE_SIZE_USD'), envNumber('MAX_POSITION_USD'));
+    assertTradeSize(entryUsd);
     if(this.state.pending||this.state.position)throw Error('Existing position or unresolved order');
     if(!symbol.endsWith('-USD'))throw Error('USD spot products only');
     if(!Number.isFinite(dailyLossLimit)||dailyLossLimit<=0||this.state.realized<=-dailyLossLimit)throw Error('Daily loss guard');
-    if(!Number.isFinite(availableUsd)||!Number.isFinite(entryFeeRate)||entryFeeRate<0||entryFeeRate>1||availableUsd<9*(1+entryFeeRate))throw Error('Insufficient verified USD balance including fees');
-    this.state.pending={clientId:randomUUID(),symbol,side:'buy',quoteUsd:9};
+    if(!Number.isFinite(availableUsd)||!Number.isFinite(entryFeeRate)||entryFeeRate<0||entryFeeRate>1||availableUsd<entryUsd*(1+entryFeeRate))throw Error('Insufficient verified USD balance including fees');
+    this.state.pending={clientId:randomUUID(),symbol,side:'buy',quoteUsd:entryUsd};
     this.save(); // intent is durable before any submission
     await this.adapter.submit(this.state.pending);
     await this.reconcile();
@@ -48,7 +52,7 @@ export class Lifecycle {
     this.rollDay();
     if(intent.side==='buy'&&f.quantity>0){
       const cost=f.quantity*f.price+f.fees;
-      if(f.quantity*f.price>9+.000001)throw Error('Unexpected entry cost; manual reconciliation required');
+      if(f.quantity*f.price>(intent.quoteUsd ?? 0)+.000001)throw Error('Unexpected entry cost; manual reconciliation required');
       this.state.position={symbol:intent.symbol,quantity:f.quantity,cost,entryTime:this.now(),high:f.price};
     }
     if(intent.side==='sell'){
@@ -67,7 +71,7 @@ export class Lifecycle {
   async exitIfNeeded(price:number,quoteTime:number,rules:{stop:number;target:number;maxHoldHours:number;trailing:number}){
     if(this.state.pending)return;
     const p=this.state.position;if(!p)return;
-    if(!Number.isFinite(price)||price<=0||!Number.isFinite(quoteTime)||Math.abs(this.now()-quoteTime)>30000)throw Error('Missing or stale executable quote');
+    if(!Number.isFinite(price)||price<=0||!Number.isFinite(quoteTime)||Math.abs(this.now()-quoteTime)>envNumber('MAX_QUOTE_AGE_MS'))throw Error('Missing or stale executable quote');
     if(![rules.stop,rules.target,rules.maxHoldHours,rules.trailing].every(x=>Number.isFinite(x)&&x>0)||rules.stop>=1||rules.trailing>=1)throw Error('Invalid exit rules');
     p.high=Math.max(p.high,price);this.save();
     const value=p.quantity*price,change=value/p.cost-1;

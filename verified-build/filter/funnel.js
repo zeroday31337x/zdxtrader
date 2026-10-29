@@ -1,24 +1,19 @@
-/**
- * Funnel: cheapest check first.
- * Facts kill before judgments.
- * Every rejection logged with the check that fired.
- * Bench by reason, not by token.
- */
+import { envNumber } from '../policy/env.js';
 export class Filter {
     bench = new Map();
     async pass(candidate, state) {
         // 1. Free cuts on data already in hand
         if (candidate.flags?.includes('honeypot')) {
-            this.benchIt(candidate.id, 'honeypot', 'hard_fact', 24 * 60 * 60 * 1000);
+            this.benchIt(candidate.id, 'honeypot', 'hard_fact', envNumber('HARD_FACT_BENCH_MS'));
             return { ok: false, reason: 'honeypot' };
         }
         if (candidate.flags?.includes('open_mint')) {
-            this.benchIt(candidate.id, 'open_mint', 'hard_fact', 24 * 60 * 60 * 1000);
+            this.benchIt(candidate.id, 'open_mint', 'hard_fact', envNumber('HARD_FACT_BENCH_MS'));
             return { ok: false, reason: 'open mint authority' };
         }
         // 2. One-call checks (example)
-        if (state.spread_bps > 50) {
-            this.benchIt(candidate.id, 'wide_spread', 'data_check', 5 * 60 * 1000);
+        if (state.spread_bps > envNumber('MAX_SPREAD_BPS')) {
+            this.benchIt(candidate.id, 'wide_spread', 'data_check', envNumber('SPREAD_BENCH_MS'));
             return { ok: false, reason: 'spread too wide' };
         }
         // 3. Then Jev (caller does this)

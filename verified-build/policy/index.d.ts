@@ -1,7 +1,6 @@
 /**
- * Policy: thresholds and combination weights in code.
- * One threshold per action, scaled to what being wrong costs.
- * Edit coefficients here, not prompts.
+ * Policy: thresholds are loaded from .env.
+ * All operational policy values must come from env.
  */
 export declare const POLICY: {
     min_setup_score: number;

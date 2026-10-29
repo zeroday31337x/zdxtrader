@@ -1,39 +1,43 @@
+import { saveAnalysis } from '../reports/live-analysis.js';
+import { collectHistoryContext, summarizeVenue, type HistoryContext } from '../market/history-context.js';
+import { goldenAnalysis } from '../market/golden.js';
+import { envNumber as setting, envText, envBoolean } from '../policy/env.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const setting = (name: string, fallback: number): number => {
-  const raw = process.env[name];
-  if (raw === undefined || raw === '') return fallback;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : fallback;
-};
 
-export const SHORT_PRODUCTS = (process.env.SCAN_PRODUCTS || 'BTC-USD,ETH-USD,SOL-USD,DOGE-USD,XRP-USD')
+export const MEME_PRODUCTS = envText('MEME_PRODUCTS')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
 
-export const MEME_PRODUCTS = (process.env.MEME_PRODUCTS || 'DOGE-USD,SHIB-USD,PEPE-USD,BONK-USD,WIF-USD,FLOKI-USD,FARTCOIN-USD,PENGU-USD,TOSHI-USD,TRUMP-USD')
+export const SHORT_PRODUCTS = envText('SCAN_PRODUCTS')
   .split(',')
   .map((s) => s.trim())
-  .filter(Boolean);
+  .filter((symbol) => Boolean(symbol) && !MEME_PRODUCTS.includes(symbol));
 
-const ROUND_TRIP_FEE_BPS = setting('ROUND_TRIP_FEE_BPS', 150);
-const MIN_EDGE_BUFFER_BPS = setting('MIN_EDGE_BUFFER_BPS', 50);
-const MIN_PROFIT_EDGE_BPS = setting('MIN_PROFIT_EDGE_BPS', 10);
-const MIN_PROFIT_CONFIDENCE = setting('MIN_PROFIT_CONFIDENCE', 0.55);
-const MIN_MEME_VOLUME = setting('MEME_MIN_VOLUME_USD_24H', 1000000);
-const MAX_MEME_SPREAD = setting('MEME_MAX_SPREAD_BPS', 30);
+
+const ROUND_TRIP_FEE_BPS = setting('ROUND_TRIP_FEE_BPS');
+const MIN_EDGE_BUFFER_BPS = setting('MIN_EDGE_BUFFER_BPS');
+const MIN_PROFIT_EDGE_BPS = setting('MIN_PROFIT_EDGE_BPS');
+const MIN_MEME_VOLUME = setting('MEME_MIN_VOLUME_USD_24H');
+const MAX_MEME_SPREAD = setting('MEME_MAX_SPREAD_BPS');
 
 const timestamp = () => new Date().toISOString();
 const log = (...args: unknown[]) => console.log(`[${timestamp()}]`, ...args);
 const warn = (...args: unknown[]) => console.warn(`[${timestamp()}]`, ...args);
 const error = (...args: unknown[]) => console.error(`[${timestamp()}]`, ...args);
 
-type Candle = { start: number; close: number; volume: number };
+type Candle = { start: number; close: number; volume: number; high: number; low: number };
 
 export interface MarketSnapshot {
+  venue_history?: HistoryContext;
+  golden?: ReturnType<typeof goldenAnalysis>;
+  bid?: number;
+  ask?: number;
+  base_increment?: string;
+  base_min_size?: number;
   mid: number;
   spread_bps: number;
   imbalance: number;
@@ -57,27 +61,29 @@ export interface MarketSnapshot {
   ask_depth_usd: number;
   volume_usd_24h?: number;
   volume_ratio_24h?: number;
+  volume_ratio_recent?: number;
   cross_exchange_mid?: number;
   cross_exchange_spread_bps?: number;
   cross_exchange_imbalance?: number;
   cross_exchange_sources?: number;
 }
 
-const API = 'https://api.coinbase.com/api/v3/brokerage/market';
+const API = envText('COINBASE_MARKET_API');
 let nextRequest = 0;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function getJSON(url: string): Promise<any> {
+async function getJSON(url: string, attempt = 0): Promise<any> {
   const now = Date.now();
   const waitMs = Math.max(0, nextRequest - now);
   if (waitMs > 0) await sleep(waitMs);
-  nextRequest = Date.now() + 650;
+  nextRequest = Date.now() + setting('MARKET_REQUEST_INTERVAL_MS');
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const response = await fetch(url, { signal: AbortSignal.timeout(setting('MARKET_TIMEOUT_MS')) });
   if (response.status === 429) {
-    await sleep(4000);
-    return getJSON(url);
+    if(attempt>=setting('MARKET_MAX_RETRIES'))throw Error('Market rate-limit retry budget exhausted');
+    await sleep(setting('MARKET_RETRY_MS'));
+    return getJSON(url,attempt+1);
   }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
@@ -90,9 +96,15 @@ export function completedCandles(raw: any[], interval: number, count: number, no
     .map((c) => ({
       start: Number(c.start),
       close: Number(c.close),
+      high: Number(c.high ?? c.close),
+      low: Number(c.low ?? c.close),
       volume: Number(c.volume),
     }))
-    .filter((c) => Number.isFinite(c.start) && Number.isFinite(c.close) && c.close > 0 && Number.isFinite(c.volume))
+    .filter((c) => c.start < end)
+    .map((c) => {
+      if (!Number.isFinite(c.start) || !Number.isFinite(c.close) || c.close <= 0 || !Number.isFinite(c.volume) || c.volume < 0 || !Number.isFinite(c.high) || !Number.isFinite(c.low) || c.low <= 0 || c.high < c.close || c.low > c.close) throw new Error('Invalid candle history');
+      return c;
+    })
     .sort((a, b) => a.start - b.start)
     .slice(-count);
 
@@ -155,13 +167,13 @@ async function getCandles(symbol: string, interval: number, granularity: string,
 function expectedReturnScore(s: Partial<MarketSnapshot>): number {
   const trend = Math.abs(s.ret_5m ?? 0) * 10000;
   const microTrend = Math.abs(s.ret_15m ?? 0) * 10000;
-  const crossConsensusBoost = (s.cross_exchange_sources ?? 1) * 18;
-  const spreadPenalty = (s.spread_bps ?? s.cross_exchange_spread_bps ?? 0) * 2.5;
-  const volatilityPenalty = (s.realized_vol_1m ?? 0) * 10000 * 1.5;
-  const volumeBoost = Math.max(0, Math.log((s.volume_ratio_24h ?? 1) + 1) * 250);
+  const crossConsensusBoost = (s.cross_exchange_sources ?? 1) * setting('EDGE_SOURCE_WEIGHT');
+  const spreadPenalty = (s.spread_bps ?? s.cross_exchange_spread_bps ?? 0) * setting('EDGE_SPREAD_WEIGHT');
+  const volatilityPenalty = (s.realized_vol_1m ?? 0) * 10000 * setting('EDGE_VOLATILITY_WEIGHT');
+  const volumeBoost = Math.max(0, Math.log((s.volume_ratio_recent ?? s.volume_ratio_24h ?? 1) + 1) * setting('EDGE_VOLUME_WEIGHT'));
   const crossVenueDelta = Math.abs((s.cross_exchange_mid ?? s.mid ?? 0) - (s.mid ?? 0)) / Math.max(s.mid ?? 1, 1) * 10000;
-  const imbalance = Math.abs(s.imbalance ?? s.cross_exchange_imbalance ?? 0) * 500;
-  return Math.max(0, trend * 1.4 + microTrend * 0.8 + imbalance + crossConsensusBoost + volumeBoost + crossVenueDelta - spreadPenalty - volatilityPenalty);
+  const imbalance = Math.abs(s.imbalance ?? s.cross_exchange_imbalance ?? 0) * setting('EDGE_IMBALANCE_WEIGHT');
+  return Math.max(0, trend * setting('EDGE_TREND_WEIGHT') + microTrend * setting('EDGE_MICROTREND_WEIGHT') + imbalance + crossConsensusBoost + volumeBoost + crossVenueDelta - spreadPenalty - volatilityPenalty);
 }
 
 async function fetchProduct(symbol: string): Promise<any> {
@@ -206,6 +218,9 @@ export async function scanProducts(products = SHORT_PRODUCTS, strategy: 'short_t
 
       const common = {
         mid,
+        bid: bestBid, ask: bestAsk,
+        base_increment: typeof meta.base_increment === 'string' ? meta.base_increment : undefined,
+        base_min_size: Number(meta.base_min_size ?? 0),
         spread_bps,
         imbalance,
         timestamp: new Date().toISOString(),
@@ -224,24 +239,34 @@ export async function scanProducts(products = SHORT_PRODUCTS, strategy: 'short_t
       };
 
       if (strategy === 'short_term') {
-        const candles = await getCandles(symbol, 60, 'ONE_MINUTE', 31);
+        const candles = await getCandles(symbol, 60, 'ONE_MINUTE', setting('SHORT_HISTORY_BARS'));
+        const venue_history = await collectHistoryContext(symbol, summarizeVenue('coinbase', symbol, 'USD', bestBid, bestAsk, candles), 60, candles.length);
+        const golden = goldenAnalysis(candles, bestAsk, venue_history);
         const features = historyFeatures(candles);
         const ret_1m = features.ret(1);
         const ret_5m = features.ret(5);
         const ret_15m = features.ret(15);
-        const volume_ratio_24h = 1.1;
+        const window=setting('VOLUME_WINDOW_BARS');
+        if(!Number.isInteger(window)||window<1||window>=candles.length)throw Error('Invalid VOLUME_WINDOW_BARS');
+        const recent=candles.slice(-window).reduce((sum,c)=>sum+c.volume,0)/window;
+        const previous=candles.slice(0,-window).reduce((sum,c)=>sum+c.volume,0)/(candles.length-window);
+        const volume_ratio_recent=previous>0?recent/previous:0;
 
         const score = expectedReturnScore({
           ...common,
-          ret_5m,
-          ret_15m,
+          cross_exchange_sources: venue_history.source_count,
+          ret_5m: venue_history.mean_return_5,
+          ret_15m: venue_history.mean_return_15,
           realized_vol_1m: features.vol(1),
           realized_vol_5m: features.vol(5),
-          volume_ratio_24h,
+          volume_ratio_recent,
         });
 
         snapshots.push({
           ...common,
+          venue_history, golden,
+          cross_exchange_sources: venue_history.source_count,
+          volume_ratio_recent,
           horizon: 'minutes',
           ret_1m,
           ret_5m,
@@ -251,7 +276,9 @@ export async function scanProducts(products = SHORT_PRODUCTS, strategy: 'short_t
           realized_vol_5m: features.vol(5),
         });
       } else {
-        const candles = await getCandles(symbol, 3600, 'ONE_HOUR', 49);
+        const candles = await getCandles(symbol, 3600, 'ONE_HOUR', setting('HOURLY_HISTORY_BARS'));
+        const venue_history = await collectHistoryContext(symbol, summarizeVenue('coinbase', symbol, 'USD', bestBid, bestAsk, candles), 3600, candles.length);
+        const golden = goldenAnalysis(candles, bestAsk, venue_history);
         const features = historyFeatures(candles);
         const ret_1h = features.ret(1);
         const ret_6h = features.ret(6);
@@ -270,6 +297,8 @@ export async function scanProducts(products = SHORT_PRODUCTS, strategy: 'short_t
 
         snapshots.push({
           ...common,
+          venue_history, golden,
+          cross_exchange_sources: venue_history.source_count,
           horizon: '24–72 hours',
           ret_1h,
           ret_6h,
@@ -296,7 +325,9 @@ export function filterClearingFees(snapshots: MarketSnapshot[]): MarketSnapshot[
     log(`[short_term] Scanned ${snapshots.length} products`);
     log(`[short_term] Best edge proxy: ${sorted[0].symbol} ${sorted[0].estimated_edge_bps.toFixed(1)} bps (need ${threshold}; predictive score, not guaranteed profit)`);
   }
-  return sorted.filter((item) => item.estimated_edge_bps > threshold);
+  const passing=sorted.filter((item) => item.estimated_edge_bps > threshold);
+  if(envBoolean('FIB_BUY_PRIORITY'))passing.sort((a,b)=>Number(Boolean(b.golden?.in_buy_zone))-Number(Boolean(a.golden?.in_buy_zone)) || Number(Boolean(b.golden?.near_buy_time))-Number(Boolean(a.golden?.near_buy_time)) || b.estimated_edge_bps-a.estimated_edge_bps);
+  return passing;
 }
 
 export function filterMemeCandidates(snapshots: MarketSnapshot[]): MarketSnapshot[] {
@@ -308,6 +339,12 @@ export function filterMemeCandidates(snapshots: MarketSnapshot[]): MarketSnapsho
       Number.isFinite(s.volume_ratio_24h) && (s.volume_ratio_24h ?? 0) >= 1 &&
       s.spread_bps <= MAX_MEME_SPREAD)
     .sort((a, b) => (b.volume_ratio_24h ?? 0) - (a.volume_ratio_24h ?? 0));
+}
+
+export async function buildCandidateSnapshots(): Promise<MarketSnapshot[]> {
+  const snapshots=await scanProducts(SHORT_PRODUCTS, 'short_term');
+  await saveAnalysis(snapshots);
+  return filterClearingFees(snapshots);
 }
 
 export async function buildBestSnapshot(): Promise<MarketSnapshot | null> {

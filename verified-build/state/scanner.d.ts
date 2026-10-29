@@ -1,6 +1,21 @@
+import { type HistoryContext } from '../market/history-context.js';
+import { goldenAnalysis } from '../market/golden.js';
 export declare const MEME_PRODUCTS: string[];
 export declare const SHORT_PRODUCTS: string[];
+type Candle = {
+    start: number;
+    close: number;
+    volume: number;
+    high: number;
+    low: number;
+};
 export interface MarketSnapshot {
+    venue_history?: HistoryContext;
+    golden?: ReturnType<typeof goldenAnalysis>;
+    bid?: number;
+    ask?: number;
+    base_increment?: string;
+    base_min_size?: number;
     mid: number;
     spread_bps: number;
     imbalance: number;
@@ -9,36 +24,36 @@ export interface MarketSnapshot {
     ret_1m?: number;
     ret_5m?: number;
     ret_15m?: number;
+    ret_1h?: number;
+    ret_6h?: number;
+    ret_24h?: number;
     timestamp: string;
     symbol: string;
     estimated_edge_bps: number;
     strategy: 'short_term' | 'meme_swing';
     horizon: string;
     history_complete: boolean;
-    account_state_available: false;
+    account_state_available: boolean;
     quote_min_size: number;
     quote_max_size: number;
     ask_depth_usd: number;
-    ret_1h?: number;
-    ret_6h?: number;
-    ret_24h?: number;
-    realized_vol_24h?: number;
     volume_usd_24h?: number;
     volume_ratio_24h?: number;
+    volume_ratio_recent?: number;
+    cross_exchange_mid?: number;
+    cross_exchange_spread_bps?: number;
+    cross_exchange_imbalance?: number;
+    cross_exchange_sources?: number;
 }
-type Candle = {
-    start: number;
-    close: number;
-    volume: number;
-};
 export declare function completedCandles(raw: any[], interval: number, count: number, now?: number): Candle[];
-export declare function historyFeatures(c: Candle[]): {
+export declare function historyFeatures(candles: Candle[]): {
     ret: (bars: number) => number;
     vol: (bars: number) => number;
 };
 export declare function scanProducts(products?: string[], strategy?: 'short_term' | 'meme_swing'): Promise<MarketSnapshot[]>;
 export declare function filterClearingFees(snapshots: MarketSnapshot[]): MarketSnapshot[];
 export declare function filterMemeCandidates(snapshots: MarketSnapshot[]): MarketSnapshot[];
+export declare function buildCandidateSnapshots(): Promise<MarketSnapshot[]>;
 export declare function buildBestSnapshot(): Promise<MarketSnapshot | null>;
 export declare function buildBestMemeSnapshot(): Promise<MarketSnapshot | null>;
 export {};

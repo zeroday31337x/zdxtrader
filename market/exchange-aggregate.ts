@@ -50,7 +50,7 @@ const symbolMap: Record<string, { binance: string; kraken: string; crypto: strin
 function mapSymbol(symbol: string, exchange: 'binance' | 'kraken' | 'crypto.com'): string {
   const mapping = symbolMap[symbol];
   if (!mapping) return symbol.replace(/-/g, '').replace(/USD$/i, 'USDT');
-  return mapping[exchange];
+  return mapping[exchange === 'crypto.com' ? 'crypto' : exchange];
 }
 
 async function fetchJson(url: string): Promise<any> {
