@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 
 test('real main loop buys, persists ownership, deterministically sells, and saves analysis offline', {timeout:15000}, async()=>{
  const root=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'desk-integration-'));
- const config={...dotenv.parse(fs.readFileSync('.env.example')),MODE:'paper',FIB_SWING_METHOD:'legacy',FIB_TARGET_MODE:'extension',DECISION_ENGINE:'deterministic',LIVE_TRADING:'false',ENABLE_AUTO_SELL:'true',STOP_AFTER_PURCHASE:'false',SCAN_PRODUCTS:'TEST-USD',MEME_PRODUCTS:'OTHER-USD',POLL_INTERVAL_MS:'10',MARKET_REQUEST_INTERVAL_MS:'0',ANALYSIS_INTERVAL_MS:'1',ROUND_TRIP_FEE_BPS:'0',MIN_EDGE_BUFFER_BPS:'0',MIN_PROFIT_EDGE_BPS:'0',REQUIRE_TARGET_MARGIN:'false',TYPESAFE_API_KEY:''};
+ const config={...dotenv.parse(fs.readFileSync('.env.example')),MODE:'paper',EXTERNAL_HISTORY_ASYNC:'false',FIB_SWING_METHOD:'legacy',FIB_TARGET_MODE:'extension',DECISION_ENGINE:'deterministic',LIVE_TRADING:'false',ENABLE_AUTO_SELL:'true',STOP_AFTER_PURCHASE:'false',SCAN_PRODUCTS:'TEST-USD',MEME_PRODUCTS:'OTHER-USD',POLL_INTERVAL_MS:'10',MARKET_REQUEST_INTERVAL_MS:'0',ANALYSIS_INTERVAL_MS:'1',ROUND_TRIP_FEE_BPS:'0',MIN_EDGE_BUFFER_BPS:'0',MIN_PROFIT_EDGE_BPS:'0',REQUIRE_TARGET_MARGIN:'false',TYPESAFE_API_KEY:''};
  const file=path.join(dir,'.env');fs.writeFileSync(file,Object.entries(config).map(([k,v])=>`${k}=${v}`).join('\n'));
  const childEnv={...process.env,DOTENV_CONFIG_PATH:file};delete childEnv.NODE_TEST_CONTEXT;
  const child=spawn(process.execPath,['--import',path.join(root,'tests/fake-market.mjs'),path.join(root,'verified-build/src/main.js')],{cwd:dir,env:childEnv,stdio:['ignore','pipe','pipe']});

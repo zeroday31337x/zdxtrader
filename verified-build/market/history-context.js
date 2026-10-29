@@ -1,5 +1,6 @@
+import { appendTelemetry } from '../logs/stream.js';
 import { loggedFetch } from '../logs/http.js';
-import { envNumber, envText } from '../policy/env.js';
+import { envNumber, envText, envBoolean } from '../policy/env.js';
 export function validateBars(raw, interval, count, now = Date.now()) {
     const end = Math.floor(now / 1000 / interval) * interval;
     const bars = raw.filter(b => b.start < end).sort((a, b) => a.start - b.start).slice(-count);
@@ -59,7 +60,9 @@ export async function fetchVenueHistory(exchange, symbol, interval, count) {
     const bars = cached ?? validateBars(crypto ? (history.result?.data ?? []).map((c) => ({ open: Number(c.o), start: Number(c.t) / 1000, close: Number(c.c), high: Number(c.h), low: Number(c.l), volume: Number(c.v) })) : history.map((c) => ({ open: Number(c[1]), start: Number(c[0]) / 1000, high: Number(c[2]), low: Number(c[3]), close: Number(c[4]), volume: Number(c[5]) })), interval, count);
     cache.set(key, { end, bars });
     const b = crypto ? book.result?.data?.[0] : book;
-    return summarizeVenue(exchange, pair, quote, Number(crypto ? b?.bids?.[0]?.[0] : b?.bidPrice), Number(crypto ? b?.asks?.[0]?.[0] : b?.askPrice), bars);
+    const venue = summarizeVenue(exchange, pair, quote, Number(crypto ? b?.bids?.[0]?.[0] : b?.bidPrice), Number(crypto ? b?.asks?.[0]?.[0] : b?.askPrice), bars);
+    appendTelemetry('market-data', exchange, { timestamp: venue.receivedAt, symbol, interval, historyCached: Boolean(cached), venue });
+    return venue;
 }
 export function combineHistories(venues, unavailable = []) {
     if (!venues.length)
@@ -71,11 +74,45 @@ export function combineHistories(venues, unavailable = []) {
     });
     return { venues, unavailable, source_count: venues.length, upward_fraction: venues.filter(v => v.ret5 > 0 && v.ret15 > 0).length / venues.length, mean_return_5: venues.reduce((s, v) => s + v.ret5, 0) / venues.length, mean_return_15: venues.reduce((s, v) => s + v.ret15, 0) / venues.length, normalized_history: aligned };
 }
+const recentVenues = new Map();
+const refreshingVenues = new Map();
+const lastAttempts = new Map();
+const refreshErrors = new Map();
+export async function waitForHistoryRefreshes() { await Promise.allSettled([...refreshingVenues.values()]); }
 export async function collectHistoryContext(symbol, coinbase, interval, count) {
     const enabled = envText('ANALYSIS_EXCHANGES').split(',').map(s => s.trim()).filter(Boolean);
     const allowed = ['binance.com', 'binance.us', 'crypto.com'];
     if (enabled.some(e => !allowed.includes(e)))
         throw Error('Unsupported ANALYSIS_EXCHANGES value');
+    if (envBoolean('EXTERNAL_HISTORY_ASYNC')) {
+        const venues = [coinbase], unavailable = [];
+        const now = Date.now(), ageLimit = envNumber('EXTERNAL_HISTORY_MAX_AGE_MS'), refreshInterval = envNumber('EXTERNAL_HISTORY_REFRESH_MS');
+        if (ageLimit <= 0 || refreshInterval <= 0)
+            throw Error('Invalid asynchronous history timing');
+        for (const exchange of enabled) {
+            const key = `${exchange}:${symbol}:${interval}:${count}`;
+            if (!refreshingVenues.has(key) && now - (lastAttempts.get(key) ?? 0) >= refreshInterval) {
+                lastAttempts.set(key, now);
+                const job = fetchVenueHistory(exchange, symbol, interval, count).then(venue => { recentVenues.set(key, venue); refreshErrors.delete(key); }, error => { refreshErrors.set(key, String(error?.message ?? error)); }).finally(() => { refreshingVenues.delete(key); });
+                refreshingVenues.set(key, job);
+            }
+            const cached = recentVenues.get(key);
+            try {
+                if (!cached)
+                    throw Error(refreshErrors.get(key) ?? 'background history warming');
+                if (now - Date.parse(cached.receivedAt) > ageLimit)
+                    throw Error('background history expired');
+                validateBars(cached.candles, interval, count, now);
+                if (cached.candles.at(-1)?.start !== coinbase.candles.at(-1)?.start)
+                    throw Error('background history not aligned to Coinbase closed candles');
+                venues.push(cached);
+            }
+            catch (error) {
+                unavailable.push({ exchange, reason: error.message });
+            }
+        }
+        return combineHistories(venues, unavailable);
+    }
     const results = await Promise.allSettled(enabled.map(exchange => fetchVenueHistory(exchange, symbol, interval, count)));
     const venues = [coinbase], unavailable = [];
     results.forEach((r, i) => { if (r.status === 'fulfilled')

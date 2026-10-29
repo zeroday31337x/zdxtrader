@@ -1,9 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateBars, fetchVenueHistory, combineHistories, summarizeVenue, collectHistoryContext } from '../verified-build/market/history-context.js';
+import { validateBars, fetchVenueHistory, combineHistories, summarizeVenue, collectHistoryContext,waitForHistoryRefreshes } from '../verified-build/market/history-context.js';
 import { goldenAnalysis } from '../verified-build/market/golden.js';
 const end=Math.floor(Date.now()/60000)*60;
 const bars=Array.from({length:61},(_,i)=>({start:end-(61-i)*60,close:100+i,high:101+i,low:99+i,volume:100}));
+test('background venue refresh never blocks scans, deduplicates requests and excludes expired data',async()=>{
+ const oldFetch=globalThis.fetch;
+ const previous={EXTERNAL_HISTORY_ASYNC:process.env.EXTERNAL_HISTORY_ASYNC,ANALYSIS_EXCHANGES:process.env.ANALYSIS_EXCHANGES};
+ Object.assign(process.env,{EXTERNAL_HISTORY_ASYNC:'true',ANALYSIS_EXCHANGES:'binance.com'});
+ let release;const gate=new Promise(resolve=>{release=resolve;});let requests=0;
+ globalThis.fetch=async url=>{requests++;await gate;return new Response(JSON.stringify(String(url).includes('klines')?bars.map(b=>[b.start*1000,b.close,b.high,b.low,b.close,b.volume]):{bidPrice:'159',askPrice:'161'}));};
+ try {
+  const cb=summarizeVenue('coinbase','ASYNC-USD','USD',159,161,bars);
+  const first=await collectHistoryContext('ASYNC-USD',cb,60,61);
+  assert.equal(first.source_count,1);assert.match(first.unavailable[0].reason,/warming/);
+  await collectHistoryContext('ASYNC-USD',cb,60,61);assert.equal(requests,2);
+  release();await waitForHistoryRefreshes();
+  const ready=await collectHistoryContext('ASYNC-USD',cb,60,61);
+  assert.equal(ready.source_count,2);assert.equal(requests,2);
+  ready.venues[1].receivedAt='2000-01-01T00:00:00Z';
+  const expired=await collectHistoryContext('ASYNC-USD',cb,60,61);
+  assert.equal(expired.source_count,1);assert.match(expired.unavailable[0].reason,/expired/);
+ }finally{release();await waitForHistoryRefreshes();globalThis.fetch=oldFetch;Object.assign(process.env,previous);}
+});
 test('history validation rejects stale, gapped, duplicate and invalid OHLC bars',()=>{
  assert.equal(validateBars(bars,60,61).length,61);
  assert.throws(()=>validateBars(bars.slice(0,-1),60,60),/stale/);

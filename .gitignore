@@ -41,3 +41,5 @@ state/platform-*.json
 state/runtime.json
 state/entry-cooldown-*.json
 state/archive/
+
+logs/telemetry/

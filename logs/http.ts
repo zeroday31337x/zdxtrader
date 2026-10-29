@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { envBoolean,envNumber } from '../policy/env.js';
-const sensitive=/(authorization|api[-_]?key|api[-_]?secret|private[-_]?key|password|secret|access[-_]?token|refresh[-_]?token|signature|cookie)/i;
+import { appendTelemetry, flushTelemetry } from './stream.js';
+import { envBoolean,envNumber,envText } from '../policy/env.js';
+const sensitive=/(authorization|api[-_]?key|api[-_]?secret|private[-_]?key|password|secret|access[-_]?token|refresh[-_]?token|(?:^|[-_])token$|signature|cookie)/i;
 export function redactHttp(value:unknown,depth=0):unknown {
  if(depth>envNumber('HTTP_LOG_MAX_DEPTH'))return '[depth limited]';
  if(typeof value==='string') {
@@ -22,7 +23,30 @@ function routeInfo(input:string|URL|Request) {
  url.username='';url.password='';for(const key of [...url.searchParams.keys()])if(sensitive.test(key))url.searchParams.set(key,'[REDACTED]');
  return {host:url.host,route:url.pathname+(url.search?url.search:'')};
 }
-function emit(event:string,fields:Record<string,unknown>){console.log(JSON.stringify({timestamp:new Date().toISOString(),component:'http',event,...fields}));}
+const captures=new Set<Promise<void>>();
+let lastConsoleError=0;
+function emit(event:string,fields:Record<string,unknown>){
+ const row={timestamp:new Date().toISOString(),component:'http',event,...fields};
+ const provider=String(fields.provider??fields.host??'unknown');
+ appendTelemetry('http',provider,row);
+ const mode=envText('HTTP_LOG_CONSOLE_MODE');
+ const trading=(provider==='coinbase'||provider==='api.coinbase.com')&&String(fields.route).includes('/orders');
+ const error=event==='error'||(typeof fields.status==='number'&&fields.status>=400);
+ if(mode==='all'||(mode==='trading'&&trading)||((mode==='trading'||mode==='errors')&&error&&Date.now()-lastConsoleError>=envNumber('TELEMETRY_WARNING_INTERVAL_MS'))) {
+  if(error)lastConsoleError=Date.now();
+  const {bodyPreview,...summary}=row as typeof row & {bodyPreview?:unknown};console.log(JSON.stringify(summary));
+ }
+}
+async function boundedBody(response:Response):Promise<unknown> {
+ const reader=response.body?.getReader();if(!reader)return null;
+ const chunks:Uint8Array[]=[];let total=0;const limit=envNumber('HTTP_LOG_CAPTURE_MAX_BYTES');
+ const timeout=setTimeout(()=>{void reader.cancel().catch(()=>{});},envNumber('HTTP_LOG_CAPTURE_TIMEOUT_MS'));
+ try {
+  while(total<limit){const {done,value}=await reader.read();if(done)break;const chunk=value.subarray(0,limit-total);chunks.push(chunk);total+=chunk.length;}
+ }finally{clearTimeout(timeout);void reader.cancel().catch(()=>{});}
+ const text=Buffer.concat(chunks).toString('utf8');try{return JSON.parse(text);}catch{return text;}
+}
+export async function flushHttpLogs(){await Promise.allSettled([...captures]);await flushTelemetry();}
 /** Request bodies and headers are deliberately excluded, including model context and credentials. */
 export async function loggedFetch(input:string|URL|Request,init?:RequestInit):Promise<Response> {
  if(!envBoolean('HTTP_LOG_ENABLED'))return fetch(input,init);
@@ -30,11 +54,12 @@ export async function loggedFetch(input:string|URL|Request,init?:RequestInit):Pr
  emit('request',{id,method,...route});
  try {
   const response=await fetch(input,init);
-  let bodyPreview:string|undefined;
-  if(envBoolean('HTTP_LOG_RESPONSE_BODY')) {
-   try {const text=await response.clone().text();let body:unknown;try{body=JSON.parse(text);}catch{body=text;}bodyPreview=preview(body);}catch{bodyPreview='[response body unavailable]';}
-  }
-  emit('response',{id,method,...route,status:response.status,ok:response.ok,duration_ms:Date.now()-start,bodyPreview});
+  const fields={id,method,...route,status:response.status,ok:response.ok,duration_ms:Date.now()-start};
+  if(envBoolean('HTTP_LOG_RESPONSE_BODY')&&captures.size<envNumber('HTTP_LOG_MAX_CAPTURES')) {
+   const clone=response.clone();
+   const task=boundedBody(clone).then(body=>{emit('response',{...fields,bodyPreview:preview(body)});}).catch(()=>{emit('response',{...fields,bodyPreview:'[capture unavailable]'});});
+   captures.add(task);void task.finally(()=>captures.delete(task));
+  }else emit('response',{...fields,bodyCaptureSkipped:envBoolean('HTTP_LOG_RESPONSE_BODY')});
   return response;
  }catch(error:any){emit('error',{id,method,...route,duration_ms:Date.now()-start,error:redactHttp({name:error?.name,message:error?.message,code:error?.code,cause:error?.cause?.code})});throw error;}
 }

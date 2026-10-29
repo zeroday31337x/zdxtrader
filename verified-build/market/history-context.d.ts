@@ -37,4 +37,5 @@ export declare function validateBars(raw: Bar[], interval: number, count: number
 export declare function summarizeVenue(exchange: string, pair: string, quote: string, bid: number, ask: number, candles: Bar[]): VenueHistory;
 export declare function fetchVenueHistory(exchange: string, symbol: string, interval: number, count: number): Promise<VenueHistory>;
 export declare function combineHistories(venues: VenueHistory[], unavailable?: HistoryContext['unavailable']): HistoryContext;
+export declare function waitForHistoryRefreshes(): Promise<void>;
 export declare function collectHistoryContext(symbol: string, coinbase: VenueHistory, interval: number, count: number): Promise<HistoryContext>;
