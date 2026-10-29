@@ -1,5 +1,25 @@
 import type { Bar, HistoryContext } from './history-context.js';
 export declare function goldenAnalysis(bars: Bar[], ask: number, context: HistoryContext): {
+    swing_method: string;
+    confirmed_at: string | null;
+    swing_confirmed: boolean;
+    swing_invalidated: boolean;
+    atr: number | null;
+    trend_fast_ema: number | null;
+    trend_slow_ema: number | null;
+    trend_up: boolean;
+    rebound_confirmed: boolean;
+    entry_ready: boolean;
+    zone_touched: boolean;
+    entry_method: string;
+    sell_levels: {
+        power: number;
+        price: number;
+    }[];
+    target_selection: string;
+    selected_target_power: number;
+    target_clears_configured_costs: boolean;
+    structural_invalidation_price: number;
     valid: boolean;
     swing_low: number;
     swing_high: number;
@@ -27,7 +47,7 @@ export declare function positionSignal(position: {
     fees?: number;
     sellTarget?: number;
     high?: number;
-}, bid: number, golden: ReturnType<typeof goldenAnalysis>, context: HistoryContext): {
+}, bid: number, golden: ReturnType<typeof goldenAnalysis>, context: HistoryContext, sellFeeRate?: number): {
     action: string;
     reason: string;
     estimated_net_margin_bps: number;

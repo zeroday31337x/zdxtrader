@@ -1,5 +1,5 @@
 import { envNumber, envBoolean } from './env.js';
-import { MAX_TRADE_USD } from './limits.js';
+import { MAX_TRADE_USD, tradeSize } from './limits.js';
 /**
  * Policy: thresholds are loaded from .env.
  * All operational policy values must come from env.
@@ -52,7 +52,8 @@ export function decideGambler(answers, state) {
     if (envBoolean('REQUIRE_TARGET_MARGIN') && (!state?.golden?.valid || state.golden.estimated_net_target_margin_bps < envNumber('MIN_TARGET_NET_MARGIN_BPS'))) {
         return { action: 'skip', size: 0, reason: 'projected target does not clear configured net margin' };
     }
-    const size = Math.min(POLICY.base_size_usd, POLICY.max_size_usd);
+    const confidence = probability(answers?.confidence);
+    const size = tradeSize(confidence ?? undefined);
     return { action: 'long', size, reason: 'policy approved' };
 }
 export function decideSpy(answers) {

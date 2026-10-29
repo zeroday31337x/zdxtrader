@@ -1,7 +1,12 @@
+import { scheduleMemeResearch } from '../market/meme-research.js';
+import { startPredictionCollector } from '../market/predictions.js';
 import { scheduleDatasetRefresh } from '../reports/calibration.js';
 import { scheduleCorrelationAgent } from '../inference/agent.js';
 import { claimRunner } from '../execution/ownership.js';
 import { decideDeterministic } from '../policy/deterministic.js';
+import { entryEconomics } from '../policy/economics.js';
+import { EntryCooldown } from '../execution/cooldown.js';
+import { entriesPaused } from '../execution/control.js';
 import { entriesScheduled } from '../execution/schedule.js';
 import { saveAnalysis } from '../reports/live-analysis.js';
 import { positionSignal } from '../market/golden.js';
@@ -35,6 +40,7 @@ const paperBroker = new PaperBroker();
 const coinbaseBroker = new CoinbaseBroker();
 const filter = new Filter();
 const book = new Book();
+const entryCooldown = new EntryCooldown(path.join(process.cwd(), 'state', `entry-cooldown-${MODE}.json`), envNumber('ENTRY_COOLDOWN_MS'));
 let nextBlockedAnalysis = 0;
 async function analyzeWhileHolding() {
     if (Date.now() < nextBlockedAnalysis)
@@ -76,6 +82,14 @@ async function cycle() {
         log('Order awaiting reconciliation — entries locked; scheduled market analysis remains active');
         return;
     }
+    if (entriesPaused()) {
+        log('Platform control: new entries paused');
+        return;
+    }
+    if (entryCooldown.remaining() > 0) {
+        log('Entry cooldown active; waiting before another entry attempt');
+        return;
+    }
     const snapshots = await buildCandidateSnapshots();
     if (!snapshots.length) {
         log('No product cleared fee + edge threshold — skipping');
@@ -92,6 +106,12 @@ async function cycle() {
     }
 }
 async function evaluateCandidate(snapshot) {
+    if (Date.now() - Date.parse(snapshot.timestamp) > envNumber('MAX_QUOTE_AGE_MS')) {
+        const fresh = (await scanProducts([snapshot.symbol]))[0];
+        if (!fresh)
+            return;
+        snapshot = fresh;
+    }
     const candidate = {
         id: `c-${Date.now()}`,
         symbol: snapshot.symbol,
@@ -123,9 +143,22 @@ async function evaluateCandidate(snapshot) {
     }
     if (policyDecision.action !== 'skip' && MODE === 'live' && LIVE_ENABLED && coinbaseBroker.isReady()) {
         try {
-            const balance = await coinbaseBroker.availableUsd();
+            const [balance, feeRate] = await Promise.all([coinbaseBroker.availableUsd(), coinbaseBroker.spotTakerFeeRate()]);
             Object.assign(snapshot, { account_balance_usd: balance, account_state_available: true });
-            if (policyDecision.size * (1 + envNumber('BUY_FEE_BPS') / 10000) > balance) {
+            if (!snapshot.golden?.valid) {
+                await logRejection({ check: 'economics', reason: 'no valid projected sell target', symbol: candidate.symbol });
+                return;
+            }
+            const economics = entryEconomics({ sizeUsd: policyDecision.size, ask: snapshot.ask ?? NaN, target: snapshot.golden.sell_target, takerFeeRate: feeRate });
+            if (!economics.approved) {
+                await logRejection({ check: 'economics', reason: 'projected proceeds do not clear verified fees and configured net profit minima', symbol: candidate.symbol, economics });
+                return;
+            }
+            if (balance >= envNumber('TRADING_TARGET_BALANCE_USD')) {
+                log('Configured balance target reached; new entries stopped');
+                return;
+            }
+            if (policyDecision.size * (1 + feeRate) > balance) {
                 await logRejection({ check: 'balance', reason: 'insufficient verified USD including fee reserve', symbol: candidate.symbol });
                 return;
             }
@@ -139,9 +172,18 @@ async function evaluateCandidate(snapshot) {
     const riskCheck = policyDecision.action === 'skip'
         ? { approved: false, veto: 'not evaluated: policy skipped entry' }
         : risk.check({ size: policyDecision.size, symbol: candidate.symbol }, snapshot);
+    if (Date.now() - Date.parse(snapshot.timestamp) > envNumber('MAX_QUOTE_AGE_MS')) {
+        log(`Quote expired before execution: ${snapshot.symbol}`);
+        return;
+    }
     let executed = null;
     const canExecute = policyDecision.action !== 'skip' && riskCheck.approved;
+    if (entriesPaused()) {
+        log('Platform control paused entries during evaluation');
+        return;
+    }
     if (canExecute && MODE === 'paper') {
+        entryCooldown.claim();
         const side = policyDecision.action === 'long' ? 'buy' : 'sell';
         executed = await paperBroker.place({ symbol: candidate.symbol, side, sizeUsd: policyDecision.size, type: 'market' }, snapshot.mid);
         book.openPosition(candidate.symbol, policyDecision.size, snapshot.mid, { quantity: String(policyDecision.size / snapshot.mid), fees: executed.fees, sellTarget: snapshot.golden?.valid ? snapshot.golden.sell_target : undefined });
@@ -149,9 +191,10 @@ async function evaluateCandidate(snapshot) {
     }
     else if (canExecute && MODE === 'live' && LIVE_ENABLED && coinbaseBroker.isReady()) {
         const side = policyDecision.action === 'long' ? 'buy' : 'sell';
-        const clientOrderId = crypto.randomUUID();
+        const clientOrderId = coinbaseBroker.newClientOrderId();
         book.reserve(candidate.symbol, policyDecision.size, clientOrderId);
         try {
+            entryCooldown.claim();
             executed = await coinbaseBroker.place({ symbol: candidate.symbol, side, sizeUsd: policyDecision.size, type: 'market' }, snapshot.mid, clientOrderId);
             book.openPosition(candidate.symbol, executed.sizeUsd, executed.price, { quantity: executed.baseQuantity, fees: executed.fees, sellTarget: snapshot.golden?.valid ? snapshot.golden.sell_target : undefined });
         }
@@ -198,8 +241,8 @@ async function reconcilePending() {
         if (!Number.isFinite(quantity) || quantity < 0)
             throw Error('Invalid reconciled quantity');
         if (quantity === 0) {
-            if (order.status === 'FILLED')
-                throw Error('Filled order has no confirmed quantity');
+            if (order.status === 'FILLED' || value > 0 || fees > 0)
+                throw Error('Order has inconsistent zero-fill quantities');
             book.release(pending.clientOrderId);
             log(`Confirmed unfilled terminal order: ${order.status}`);
             return;
@@ -233,7 +276,17 @@ async function analyzeOwnedPosition() {
     }
     await saveAnalysis([snapshot]);
     book.updateHigh(snapshot.bid);
-    const signal = positionSignal(book.getOpen(), snapshot.bid, snapshot.golden, snapshot.venue_history);
+    let sellFeeRate = envNumber('SELL_FEE_BPS') / 10000;
+    if (MODE === 'live' && LIVE_ENABLED) {
+        try {
+            sellFeeRate = await coinbaseBroker.spotTakerFeeRate();
+        }
+        catch (error) {
+            err('Cannot verify sale costs:', error.message);
+            return;
+        }
+    }
+    const signal = positionSignal(book.getOpen(), snapshot.bid, snapshot.golden, snapshot.venue_history, sellFeeRate);
     await logExecution({ timestamp: new Date().toISOString(), mode: MODE, strategy: 'owned_position_exit', snapshot, position, exitSignal: signal });
     log(`Owned position ${position.symbol}: ${signal.action} — ${signal.reason}; estimated net ${signal.estimated_net_margin_bps.toFixed(1)} bps`);
     if (signal.action !== 'sell' || !envBoolean('ENABLE_AUTO_SELL'))
@@ -255,7 +308,7 @@ async function analyzeOwnedPosition() {
         return;
     if (!snapshot.base_increment)
         throw Error('Exchange base increment is missing');
-    const clientOrderId = crypto.randomUUID();
+    const clientOrderId = coinbaseBroker.newClientOrderId();
     book.reserveExit(clientOrderId);
     try {
         const fill = await coinbaseBroker.sellOwned({ symbol: position.symbol, quantity: position.quantity }, { bid: snapshot.bid, baseIncrement: snapshot.base_increment, minBase: snapshot.base_min_size ?? 0, minQuote: snapshot.quote_min_size }, clientOrderId);
@@ -285,6 +338,7 @@ async function main() {
     if (POLL <= 0)
         throw Error('POLL_INTERVAL_MS must be positive');
     entriesScheduled();
+    startPredictionCollector();
     log(`Trading desk starting in ${MODE} mode. Poll every ${POLL}ms`);
     if (MODE === 'live') {
         if (!LIVE_ENABLED) {
@@ -301,13 +355,25 @@ async function main() {
         log('Paper/shadow mode. No real orders.');
     }
     const run = async () => {
+        let cycleError = false;
         try {
             await cycle();
+            scheduleMemeResearch();
             scheduleDatasetRefresh();
             scheduleCorrelationAgent();
         }
         catch (errorDetail) {
+            cycleError = true;
             err('Cycle failed:', errorDetail.message);
+        }
+        const runtime = { updatedAt: new Date().toISOString(), pid: process.pid, mode: MODE, liveExecutionEnabled: MODE === 'live' && LIVE_ENABLED && coinbaseBroker.isReady(), cycleError, positionStatus: book.getOpen()?.status ?? 'empty' };
+        const runtimeFile = path.join(process.cwd(), 'state', 'runtime.json');
+        try {
+            await fs.writeFile(runtimeFile + '.tmp', JSON.stringify(runtime));
+            await fs.rename(runtimeFile + '.tmp', runtimeFile);
+        }
+        catch {
+            err('Failed to write runtime telemetry');
         }
         if (STOP_AFTER_PURCHASE && MODE === 'live' && book.getOpen()?.status === 'open') {
             log('Confirmed purchase persisted. STOP_AFTER_PURCHASE enabled; exiting.');

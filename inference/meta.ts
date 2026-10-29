@@ -1,3 +1,4 @@
+import { loggedFetch } from '../logs/http.js';
 import { envNumber, envText } from '../policy/env.js';
 import type { AnalysisAdapter, Evidence, CorrelationAnalysis } from './types.js';
 
@@ -8,7 +9,7 @@ export class MetaAnalysisAdapter implements AnalysisAdapter {
   private async request(route:string,body:unknown):Promise<any> {
     const base=envText('META_API_BASE_URL');
     const key=envText('META_API_KEY');
-    const response=await fetch(`${base.replace(/\/$/,'')}${route}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(envNumber('META_TIMEOUT_MS'))});
+    const response=await loggedFetch(`${base.replace(/\/$/,'')}${route}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(envNumber('META_TIMEOUT_MS'))});
     // Never include request headers, credentials, or echoed corpus in errors.
     if(!response.ok)throw Error(`Meta API HTTP ${response.status}`);
     return response.json();

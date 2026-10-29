@@ -11,3 +11,12 @@ export function floorQuantity(quantity: string, increment: string): string {
   const raw=units.toString().padStart(digits+1,'0');
   return digits?`${raw.slice(0,-digits)}.${raw.slice(-digits)}`:raw;
 }
+
+export function subtractQuantity(owned:string,sold:string):string {
+  if(!/^\d+(?:\.\d+)?$/.test(owned)||!/^\d+(?:\.\d+)?$/.test(sold))throw Error('Invalid confirmed quantity');
+  const digits=Math.max(owned.split('.')[1]?.length??0,sold.split('.')[1]?.length??0);
+  const scaled=(s:string)=>{const [whole,fraction='']=s.split('.');return BigInt(whole+fraction.padEnd(digits,'0'));};
+  const difference=scaled(owned)-scaled(sold);if(difference<0n)throw Error('Confirmed sale exceeds owned quantity');
+  const raw=difference.toString().padStart(digits+1,'0');
+  return digits?`${raw.slice(0,-digits)}.${raw.slice(-digits)}`:raw;
+}

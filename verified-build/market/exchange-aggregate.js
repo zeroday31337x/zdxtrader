@@ -1,3 +1,4 @@
+import { loggedFetch } from '../logs/http.js';
 const symbolMap = {
     'BTC-USD': { binance: 'BTCUSDT', kraken: 'XBTUSD', crypto: 'BTC_USDT' },
     'ETH-USD': { binance: 'ETHUSDT', kraken: 'ETHUSD', crypto: 'ETH_USDT' },
@@ -34,7 +35,7 @@ function mapSymbol(symbol, exchange) {
     return mapping[exchange === 'crypto.com' ? 'crypto' : exchange];
 }
 async function fetchJson(url) {
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const response = await loggedFetch(url, { signal: AbortSignal.timeout(8000) });
     if (!response.ok)
         throw new Error(`HTTP ${response.status}`);
     return response.json();
@@ -81,7 +82,7 @@ async function fetchCryptoBook(symbol) {
     try {
         const pair = mapSymbol(symbol, 'crypto.com');
         const body = JSON.stringify({ method: 'public/get-book', params: { instrument_name: pair }, id: 1 });
-        const response = await fetch('https://api.crypto.com/v2/public/get-book', {
+        const response = await loggedFetch('https://api.crypto.com/v2/public/get-book', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body,

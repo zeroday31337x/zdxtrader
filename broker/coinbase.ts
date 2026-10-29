@@ -1,4 +1,5 @@
-import { envNumber } from '../policy/env.js';
+import { loggedApiCall } from '../logs/http.js';
+import { envNumber, envText } from '../policy/env.js';
 import { floorQuantity } from '../execution/quantity.js';
 import { assertTradeSize } from '../policy/limits.js';
 import { CBAdvancedTradeClient } from 'coinbase-api';
@@ -61,7 +62,21 @@ export class CoinbaseBroker {
     return this.client !== null;
   }
 
-  async place(order: Order, currentMid: number, clientOrderId = randomUUID()): Promise<Fill> {
+  newClientOrderId():string {
+    if(!this.client)throw new NotSubmittedError('Coinbase client not initialized');
+    return this.client.generateNewOrderId();
+  }
+
+  private async submitOrder(request:Parameters<CBAdvancedTradeClient['submitOrder']>[0]) {
+    if(!this.client)throw new NotSubmittedError('Coinbase client not initialized');
+    try {return await loggedApiCall('coinbase','POST','/api/v3/brokerage/orders',()=>this.client!.submitOrder(request));}catch(error:any) {
+      // Explicit HTTP rejections cannot represent an accepted order. Transport timeouts and 5xx remain uncertain.
+      if([400,401,403,404,405,413,422,429].includes(Number(error?.code)))throw new NotSubmittedError(`Coinbase rejected order request (HTTP ${error.code})`);
+      throw error;
+    }
+  }
+
+  async place(order: Order, currentMid: number, clientOrderId: string = randomUUID()): Promise<Fill> {
     try { assertTradeSize(order.sizeUsd); } catch (err: any) { throw new NotSubmittedError(err.message); }
     if (!this.client) throw new NotSubmittedError('Coinbase client not initialized — missing keys');
 
@@ -69,7 +84,7 @@ export class CoinbaseBroker {
     if (!Number.isFinite(order.sizeUsd) || order.sizeUsd <= 0) throw new NotSubmittedError('Invalid order size');
     const side = order.side.toUpperCase() as 'BUY' | 'SELL';
 
-    const result = await this.client.submitOrder({
+    const result = await this.submitOrder({
       client_order_id: clientOrderId,
       product_id: order.symbol,
       side,
@@ -86,7 +101,7 @@ export class CoinbaseBroker {
 
     if (!result.success_response?.order_id) throw new Error(`Coinbase accepted request without order ID for ${clientOrderId}; requires reconciliation`);
     const orderId = result.success_response.order_id;
-    const { order: confirmed } = await this.client.getOrder({ order_id: orderId });
+    const { order: confirmed } = await loggedApiCall('coinbase','GET',`/api/v3/brokerage/orders/historical/${orderId}`,()=>this.client!.getOrder({order_id:orderId}));
     const price = Number(confirmed.average_filled_price);
     const sizeUsd = Number(confirmed.filled_value);
     const fees = Number(confirmed.total_fees);
@@ -107,9 +122,17 @@ export class CoinbaseBroker {
       baseQuantity: confirmed.filled_size,
     };
   }
+  async spotTakerFeeRate():Promise<number> {
+    if(!this.client)throw Error('Coinbase client not initialized');
+    const summary=await loggedApiCall('coinbase','GET','/api/v3/brokerage/transaction_summary',()=>this.client!.getTransactionSummary({product_type:'SPOT'}));
+    const rate=Number(summary.fee_tier?.taker_fee_rate);
+    if(!Number.isFinite(rate)||rate<0)throw Error('Unable to verify spot taker fee rate');
+    return rate;
+  }
+
   async tradingPermissions():Promise<{canView:boolean;canTrade:boolean}> {
     if(!this.client)throw Error('Coinbase client not initialized');
-    const permissions=await this.client.getApiKeyPermissions();
+    const permissions=await loggedApiCall('coinbase','GET','/api/v3/brokerage/key_permissions',()=>this.client!.getApiKeyPermissions());
     return {canView:permissions.can_view,canTrade:permissions.can_trade};
   }
 
@@ -117,7 +140,7 @@ export class CoinbaseBroker {
     if(!this.client)throw Error('Coinbase client not initialized');
     let total=0,cursor:string|undefined;
     for(let page=0;page<envNumber('RECONCILE_MAX_PAGES');page++) {
-      const result=await this.client.getAccounts({limit:envNumber('RECONCILE_PAGE_SIZE'),cursor});
+      const result=await loggedApiCall('coinbase','GET','/api/v3/brokerage/accounts',()=>this.client!.getAccounts({limit:envNumber('RECONCILE_PAGE_SIZE'),cursor}));
       for(const account of result.accounts) {
         if(account.currency!=='USD')continue;
         const value=Number(account.available_balance.value);
@@ -136,25 +159,26 @@ export class CoinbaseBroker {
     if(!this.client)throw Error('Coinbase client not initialized');
     let cursor:string|undefined;
     for(let page=0;page<envNumber('RECONCILE_MAX_PAGES');page++) {
-      const result=await this.client.getOrders({product_ids:[symbol],limit:envNumber('RECONCILE_PAGE_SIZE'),cursor});
-      const order=result.orders.find(order=>order.client_order_id===clientOrderId&&order.product_id===symbol);
+      const result=await loggedApiCall('coinbase','GET','/api/v3/brokerage/orders/historical/batch',()=>this.client!.getOrders({product_ids:[symbol],limit:envNumber('RECONCILE_PAGE_SIZE'),cursor}));
+      const order=result.orders.find(order=>(order.client_order_id===clientOrderId||order.client_order_id===envText('COINBASE_LEGACY_CLIENT_ID_PREFIX')+clientOrderId)&&order.product_id===symbol);
       if(order)return order;
-      if(!result.has_next||!result.cursor)return null;
+      if(!result.has_next)return null;
+      if(!result.cursor)throw Error('Incomplete pending order pagination; retaining lock');
       cursor=result.cursor;
     }
     throw Error('Pending order history pagination incomplete; retaining lock');
   }
 
-  async sellOwned(position: {symbol:string; quantity:string}, market: {bid:number; baseIncrement:string; minBase:number; minQuote:number}, clientOrderId = randomUUID()): Promise<Fill> {
+  async sellOwned(position: {symbol:string; quantity:string}, market: {bid:number; baseIncrement:string; minBase:number; minQuote:number}, clientOrderId: string = randomUUID()): Promise<Fill> {
     if(!this.client)throw new NotSubmittedError('Coinbase client not initialized — missing keys');
     let quantity:string;
     try {quantity=floorQuantity(position.quantity,market.baseIncrement);} catch(error:any) {throw new NotSubmittedError(error.message);}
     const amount=Number(quantity);
     if(!Number.isFinite(market.bid)||market.bid<=0||!Number.isFinite(market.minBase)||!Number.isFinite(market.minQuote)||amount<market.minBase||amount*market.bid<market.minQuote)throw new NotSubmittedError('Owned holding is below exchange minimum sale size');
-    const result=await this.client.submitOrder({client_order_id:clientOrderId,product_id:position.symbol,side:'SELL',order_configuration:{market_market_ioc:{base_size:quantity}}});
+    const result=await this.submitOrder({client_order_id:clientOrderId,product_id:position.symbol,side:'SELL',order_configuration:{market_market_ioc:{base_size:quantity}}});
     if(!result.success)throw new NotSubmittedError(`Coinbase rejected sale: ${result.error_response?.message || 'no confirmed order ID'}`);
     if(!result.success_response?.order_id)throw Error('Sale accepted without order ID; requires reconciliation');
-    const {order}=await this.client.getOrder({order_id:result.success_response.order_id});
+    const {order}=await loggedApiCall('coinbase','GET',`/api/v3/brokerage/orders/historical/${result.success_response.order_id}`,()=>this.client!.getOrder({order_id:result.success_response!.order_id}));
     const sold=Number(order.filled_size),price=Number(order.average_filled_price),value=Number(order.filled_value),fees=Number(order.total_fees);
     if(order.status!=='FILLED'||![sold,price,value,fees].every(Number.isFinite)||sold<=0||sold>amount||price<=0||value<=0||fees<0)throw Error(`Sale ${result.success_response.order_id} requires reconciliation (status=${order.status})`);
     return {orderId:result.success_response.order_id,symbol:position.symbol,side:'sell',sizeUsd:value,price,fees,baseQuantity:order.filled_size,timestamp:order.last_fill_time||new Date().toISOString()};

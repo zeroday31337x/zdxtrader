@@ -23,7 +23,7 @@ test('entry limits and policy size follow environment in a fresh process', () =>
   import { decideGambler } from './verified-build/policy/index.js';
   const n = noul => ({type:'noul',noul});
   assertTradeSize(12); assert.throws(() => assertTradeSize(13));
-  assert.equal(decideGambler({setup_quality:n(.8),worth_trading:n(.9),toxicity:n(.1),regime:{choice:'ranging'}},{}).size,12);
+  assert.equal(decideGambler({confidence:n(.8),setup_quality:n(.8),worth_trading:n(.9),toxicity:n(.1),regime:{choice:'ranging'}},{}).size,12);
  `], {encoding:'utf8',env:childEnv});
  assert.equal(result.error,undefined);
  assert.equal(result.status,0,result.stderr);

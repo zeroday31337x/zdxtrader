@@ -44,9 +44,11 @@ The Meta adapter is registered separately in `inference/index.ts`. `META_API_KEY
 
 Fibonacci retracements/extensions and swing-duration projections use `GOLDEN_RATIO` from `.env`. They are heuristics, not established guarantees of timing or profit. Profit estimates use Coinbase execution prices and configured fees/slippage; actual fees come from confirmed fills.
 
-## Existing live reservation
+## Legacy order ID mismatch and existing live reservation
 
-The inspected pending reservation has a logged `Forbidden` error marked `notSubmitted=false`. Read-only Coinbase account checks subsequently succeeded, API permissions report view/trade enabled, and an order-history lookup returned no matching client order ID. That absence does not by itself establish a terminal exchange outcome. The implementation preserves the uncertain reservation rather than opening a duplicate position. No live order was submitted as a verification test.
+The SDK was also found to silently prefix raw client UUIDs with `cbnode`, while the old reservation stored the raw UUID. New orders now reserve the SDK-generated ID unchanged, and reconciliation recognizes both exact and legacy-prefixed IDs.
+
+The inspected pending reservation has a logged `Forbidden` error marked `notSubmitted=false`. Read-only Coinbase account checks subsequently succeeded, API permissions report view/trade enabled, and an order-history lookup returned no matching client order ID. That absence does not by itself establish a terminal exchange outcome. The implementation preserves the uncertain reservation rather than opening a duplicate position. No live order was submitted as a verification test. Future explicit HTTP 400/401/403/404/405/413/422/429 submission rejections are classified as not submitted; ambiguous transport errors and 5xx responses remain unresolved. Legacy errors do not gain that proof retroactively.
 
 ## Coverage and limits
 
@@ -61,3 +63,25 @@ Tests cover actual paper main-loop buy → persist → deterministic sale → da
 - [Crypto.com Exchange v1 REST reference](https://exchange-developer.crypto.com/exchange/v1/docs/api/rest-single-page/)
 - [Meta Model API overview and context window](https://dev.meta.ai/docs/overview)
 - [Meta Messages API and token counting](https://dev.meta.ai/docs/protocols/messages)
+
+## Verified delivery
+
+The offline suite passed 88 checks, including the real paper main-loop buy/persist/sale path and dataset integrity. The first curated dataset contained 260 rows. A real Meta Muse Spark 1.3 pass used 993,064 measured input tokens and 5,863 output tokens, returned five evidence-linked findings, and disclosed 30 omitted evidence chunks. Findings are stored in `reports/meta-correlations.json`. This validates the API adapter and near-million-token ingestion path, not a predictive-profit claim.
+
+
+## Subsequent live verification and user updates
+
+The user explicitly authorized one $1 spot connection test after being told spot fees apply. The preview succeeded, one SDK-generated client ID was submitted, and Coinbase confirmed a fill (0.00001241 BTC, filled value $0.9898419524, fees $0.0089085775716). This proves spot API execution works. The test has its own durable journal and execution event; the prior unresolved reservation was preserved. The bot's zero-fee-only instruction remains in force.
+
+The user subsequently reported $16 available and requested $1–$5 confidence sizing (30% -> $1; high confidence -> up to $5). The new sizing is configured in `.env`; unknown confidence uses the minimum, and heuristic confidence is labelled as uncalibrated. Coinbase One Basic's $500 simple-trade monthly waiver excludes Coinbase Advanced/API execution, as verified against Coinbase disclosures. Do not infer zero API fees from the subscription.
+
+Meme research now archives validated 15-minute/hourly histories for ten configured meme coins plus BTC across Coinbase, Binance.com, Binance.US and Crypto.com. The first scan collected 16,512 validated candles. Partial Coinbase histories are retained separately with explicit quality flags. Current research screens incorporate verified per-side API fees and explicitly distinguish historical scenarios, trailing momentum proxies and actual fills. No investment-profit claim or additional live buy follows from this ranking.
+
+
+## Per-route diagnostics and instrument corrections
+
+All active public HTTP adapters now emit paired JSON request/response console events with a correlation ID, method, host/route, duration, status and a bounded redacted response preview. Coinbase SDK and TypeSafe operations emit equivalent parsed-operation events, using `sdk_success` rather than inventing an HTTP status. Authorization headers, private keys and request bodies are not logged. Tests verify redaction and preservation of the original error object.
+
+Public diagnostics confirmed Binance.com returns `-1121 Invalid symbol` for the requested FARTCOINUSDT and TOSHIUSDT spot symbols; its current spot instrument list had no matching base assets. Crypto.com returns `40004 Invalid instrument_name` for their `_USDT` variants but lists `_USD` spot instruments. The adapter now supports native-quote overrides; both corrected Crypto.com books and 15-minute candle routes returned HTTP 200. Futures contracts were not substituted for spot data.
+
+The subsequent suite passed 98 offline checks, including the $1–$5 sizing rule, positive-fee entry rejection, prediction research, meme-history statistics, native-USD overrides and route/response redaction. `HTTP_LOG_ENABLED` and preview limits are controlled in `.env`.

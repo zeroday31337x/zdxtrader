@@ -12,7 +12,15 @@
     "verify": "tsc --outDir verified-build && node tests/run.mjs",
     "analyze": "tsx reports/analyze.ts",
     "analyze:meta": "tsx reports/meta-analysis.ts",
-    "dataset:once": "tsx reports/calibration.ts --once"
+    "dataset:once": "tsx reports/calibration.ts --once",
+    "status": "tsx reports/status.ts",
+    "prediction:once": "tsx reports/prediction-research.ts",
+    "prediction:watch": "tsx reports/prediction-research.ts --watch",
+    "prediction:study": "tsx reports/prediction-research.ts --study",
+    "research:memes": "tsx reports/meme-research.ts",
+    "diagnose:venues": "tsx reports/diagnose-venues.ts",
+    "api": "tsx src/api-main.ts",
+    "api:start": "node dist/src/api-main.js"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0",

@@ -1,3 +1,4 @@
+import { loggedApiCall } from '../logs/http.js';
 import { envText } from '../policy/env.js';
 import { TypeSafeClient, noul, choice, score } from '@typesafe-ai/sdk';
 import dotenv from 'dotenv';
@@ -22,11 +23,11 @@ export async function askJev(req) {
     if (!API_KEY)
         throw Error('TYPESAFE_API_KEY is required only for model decision mode');
     client ??= new TypeSafeClient({ apiKey: API_KEY, defaultModel: MODEL });
-    const response = await client.systemOne({
+    const response = await loggedApiCall('typesafe', 'POST', 'systemOne', () => client.systemOne({
         state: typeof req.state === 'string' ? req.state : JSON.stringify(req.state),
         questions: req.questions,
         model: MODEL,
-    });
+    }));
     return {
         answers: response.answers,
         model: response.model || MODEL,

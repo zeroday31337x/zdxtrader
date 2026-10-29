@@ -1,16 +1,17 @@
+import { loggedFetch } from '../logs/http.js';
 import dotenv from 'dotenv';
 dotenv.config();
 const PRODUCT = process.env.PRODUCT_ID || 'BTC-USD';
 async function fetchPublicTicker(productId) {
     const url = `https://api.coinbase.com/api/v3/brokerage/market/products/${productId}/ticker`;
-    const res = await fetch(url);
+    const res = await loggedFetch(url);
     if (!res.ok)
         throw new Error(`Ticker fetch failed: ${res.status}`);
     return res.json();
 }
 async function fetchPublicBook(productId) {
     const url = `https://api.coinbase.com/api/v3/brokerage/market/product_book?product_id=${productId}&limit=10`;
-    const res = await fetch(url);
+    const res = await loggedFetch(url);
     if (!res.ok)
         throw new Error(`Book fetch failed: ${res.status}`);
     return res.json();

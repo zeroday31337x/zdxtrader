@@ -1,3 +1,4 @@
+import { loggedFetch } from '../logs/http.js';
 import { saveAnalysis } from '../reports/live-analysis.js';
 import { collectHistoryContext, summarizeVenue, type HistoryContext } from '../market/history-context.js';
 import { goldenAnalysis } from '../market/golden.js';
@@ -79,7 +80,7 @@ async function getJSON(url: string, attempt = 0): Promise<any> {
   if (waitMs > 0) await sleep(waitMs);
   nextRequest = Date.now() + setting('MARKET_REQUEST_INTERVAL_MS');
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(setting('MARKET_TIMEOUT_MS')) });
+  const response = await loggedFetch(url, { signal: AbortSignal.timeout(setting('MARKET_TIMEOUT_MS')) });
   if (response.status === 429) {
     if(attempt>=setting('MARKET_MAX_RETRIES'))throw Error('Market rate-limit retry budget exhausted');
     await sleep(setting('MARKET_RETRY_MS'));

@@ -21,7 +21,7 @@ test('all three venue adapters use documented response formats and closed candle
   if(candle) {
    if(crypto) {
     assert.equal(new URL(url).searchParams.get('timeframe'),'1m');
-    data={code:0,result:{data:inputs.map(b=>({t:b.start*1000,c:b.close,h:b.high,l:b.low,v:b.volume}))}};
+    data={code:0,result:{data:inputs.map(b=>({t:b.start*1000,o:b.close,c:b.close,h:b.high,l:b.low,v:b.volume}))}};
    } else data=inputs.map(b=>[b.start*1000,b.close,b.high,b.low,b.close,b.volume]);
   } else data=crypto?{code:0,result:{data:[{bids:[['159','1','1']],asks:[['161','1','1']]}]}}:{bidPrice:'159',askPrice:'161'};
   return new Response(JSON.stringify(data),{status:200});
@@ -113,4 +113,43 @@ test('owned exit signal uses entry fees and a fixed entry target',()=>{
  const signal=positionSignal({size:9,entry:100,quantity:'.09',fees:.1,sellTarget:110,high:120,entryTime:new Date().toISOString()},120,golden,ctx);
  assert.equal(signal.action,'sell');assert.equal(signal.reason,'Fibonacci extension target');
  assert.ok(signal.estimated_net_margin_bps<2000);
+});
+
+test('explicit Forbidden rejection does not leave an uncertain submission',async()=>{
+ const b=Object.create(CoinbaseBroker.prototype);b.client={submitOrder:async()=>{throw {code:403,message:'Forbidden'};}};
+ await assert.rejects(b.place({symbol:'TEST-USD',side:'buy',sizeUsd:1,type:'market'},100),error=>error instanceof NotSubmittedError&&/403/.test(error.message));
+});
+test('network timeout remains uncertain and is never classified as a rejected order',async()=>{
+ const b=Object.create(CoinbaseBroker.prototype);const timeout=Object.assign(Error('timeout'),{code:'ETIMEDOUT'});b.client={submitOrder:async()=>{throw timeout;}};
+ await assert.rejects(b.place({symbol:'TEST-USD',side:'buy',sizeUsd:1,type:'market'},100),error=>error===timeout&&!(error instanceof NotSubmittedError));
+});
+
+test('reconciliation recognizes SDK-prefixed IDs from legacy reservations',async()=>{
+ const b=Object.create(CoinbaseBroker.prototype);b.client={getOrders:async()=>({orders:[{client_order_id:'cbnodelegacy-id',product_id:'TEST-USD',status:'FILLED'}],has_next:false})};
+ const found=await b.findPending('legacy-id','TEST-USD');assert.equal(found.status,'FILLED');
+});
+test('new live reservations use the SDK order ID unchanged',()=>{
+ const b=Object.create(CoinbaseBroker.prototype);b.client={generateNewOrderId:()=> 'cbnode-sdk-id'};
+ assert.equal(b.newClientOrderId(),'cbnode-sdk-id');
+});
+
+test('deprecated zero-fee flag no longer blocks submission',async()=>{
+ const old=process.env.ZERO_FEE_ENTRIES_ONLY;process.env.ZERO_FEE_ENTRIES_ONLY='true';
+ let submitted=false;const b=Object.create(CoinbaseBroker.prototype);
+ b.client={getTransactionSummary:async()=>({fee_tier:{taker_fee_rate:'.009'}}),submitOrder:async()=>{submitted=true;return {};}};
+ try{await assert.rejects(b.place({symbol:'TEST-USD',side:'buy',sizeUsd:1,type:'market'},100),/Coinbase rejected order/);assert.equal(submitted,true);}finally{process.env.ZERO_FEE_ENTRIES_ONLY=old;}
+});
+
+test('Crypto.com USD overrides keep the correct native quote currency',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async url=>{
+  assert.equal(new URL(url).searchParams.get('instrument_name'),'TOSHI_USD');
+  const candles=String(url).includes('get-candlestick');
+  return new Response(JSON.stringify(candles?{code:0,result:{data:bars.map(b=>({t:b.start*1000,o:b.close,c:b.close,h:b.high,l:b.low,v:b.volume}))}}:{code:0,result:{data:[{bids:[['159','1']],asks:[['161','1']]}]}}));
+ };
+ try{const v=await fetchVenueHistory('crypto.com','TOSHI-USD',60,61);assert.equal(v.pair,'TOSHI_USD');assert.equal(v.quote,'USD');}finally{globalThis.fetch=original;}
+});
+test('venue failures preserve the exchange error code and explanation',async()=>{
+ const original=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({code:-1121,msg:'Invalid symbol.'}),{status:400});
+ try{await assert.rejects(fetchVenueHistory('binance.com','INVALID-USD',60,61),/HTTP 400 \[-1121\]: Invalid symbol/);}finally{globalThis.fetch=original;}
 });

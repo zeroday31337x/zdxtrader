@@ -26,7 +26,10 @@ export declare class CoinbaseBroker {
     private client;
     constructor();
     isReady(): boolean;
-    place(order: Order, currentMid: number, clientOrderId?: `${string}-${string}-${string}-${string}-${string}`): Promise<Fill>;
+    newClientOrderId(): string;
+    private submitOrder;
+    place(order: Order, currentMid: number, clientOrderId?: string): Promise<Fill>;
+    spotTakerFeeRate(): Promise<number>;
     tradingPermissions(): Promise<{
         canView: boolean;
         canTrade: boolean;
@@ -52,5 +55,5 @@ export declare class CoinbaseBroker {
         baseIncrement: string;
         minBase: number;
         minQuote: number;
-    }, clientOrderId?: `${string}-${string}-${string}-${string}-${string}`): Promise<Fill>;
+    }, clientOrderId?: string): Promise<Fill>;
 }

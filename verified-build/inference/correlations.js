@@ -1,5 +1,5 @@
 import { envNumber, envText } from '../policy/env.js';
-export function measuredCorrelations(snapshots) {
+export function measuredCorrelations(snapshots, interval = 60) {
     const minimum = envNumber('CORRELATION_MIN_SAMPLES');
     const lags = envText('CORRELATION_LAGS_BARS').split(',').map(Number);
     if (lags.some(l => !Number.isInteger(l) || l < 0))
@@ -8,7 +8,7 @@ export function measuredCorrelations(snapshots) {
         const levels = s.venue_history?.normalized_history ?? [];
         const returns = new Map();
         for (let i = 1; i < levels.length; i++)
-            if (levels[i].start - levels[i - 1].start === 60 && levels[i].index > 0 && levels[i - 1].index > 0 && levels[i].sources === levels[i - 1].sources)
+            if (levels[i].start - levels[i - 1].start === interval && levels[i].index > 0 && levels[i - 1].index > 0 && levels[i].sources === levels[i - 1].sources)
                 returns.set(levels[i].start, Math.log(levels[i].index / levels[i - 1].index));
         return { symbol: s.symbol, returns };
     });
@@ -19,7 +19,7 @@ export function measuredCorrelations(snapshots) {
                 for (const lag of lags) {
                     if (lag === 0 && b < a)
                         continue;
-                    const pairs = [...series[a].returns].flatMap(([time, x]) => { const y = series[b].returns.get(time + lag * 60); return y === undefined ? [] : [[x, y]]; });
+                    const pairs = [...series[a].returns].flatMap(([time, x]) => { const y = series[b].returns.get(time + lag * interval); return y === undefined ? [] : [[x, y]]; });
                     if (pairs.length < minimum)
                         continue;
                     const mx = pairs.reduce((s, p) => s + p[0], 0) / pairs.length, my = pairs.reduce((s, p) => s + p[1], 0) / pairs.length;
@@ -33,6 +33,6 @@ export function measuredCorrelations(snapshots) {
                         continue;
                     findings.push({ leader: series[a].symbol, follower: series[b].symbol, lag_bars: lag, samples: pairs.length, pearson: Math.max(-1, Math.min(1, cov / Math.sqrt(vx * vy))) });
                 }
-    return { method: 'Pearson correlation of aligned one-minute log returns; positive lag means leader precedes follower; unadjusted exploratory estimates', minimum_samples: minimum, findings };
+    return { method: `Pearson correlation of aligned ${interval}-second log returns; positive lag means leader precedes follower; unadjusted exploratory estimates`, minimum_samples: minimum, findings };
 }
 //# sourceMappingURL=correlations.js.map

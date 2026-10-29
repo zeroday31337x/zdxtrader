@@ -5,7 +5,7 @@ export type DatasetRow = {
     timestamp: string | null;
     ingested_at: string;
     symbol: string;
-    source: 'decision' | 'rejection' | 'execution' | 'live';
+    source: 'decision' | 'rejection' | 'execution' | 'live' | 'prediction' | 'meme_research';
     action: string;
     entry_price: number | null;
     expected_return_bps: number | null;
@@ -24,6 +24,8 @@ export type DatasetRow = {
     reason: string | null;
     execution: unknown;
     realized_pnl_usd: number | null;
+    prediction_event: unknown;
+    meme_research: unknown;
     source_ref: string;
     data_available: boolean;
 };

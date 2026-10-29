@@ -4,6 +4,7 @@
  * Send only the fields the questions read.
  */
 export declare const gamblerQuestions: {
+    confidence: import("@typesafe-ai/sdk").NoulQuestion;
     regime: import("@typesafe-ai/sdk").ChoiceQuestion<{
         readonly trending_up: "Clear directional move higher";
         readonly trending_down: "Clear directional move lower";

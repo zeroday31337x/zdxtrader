@@ -4,17 +4,19 @@ import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { scanProducts, type MarketSnapshot } from '../state/scanner.js';
 import { envNumber, envBoolean } from '../policy/env.js';
+import { writePredictionStudy } from './prediction-study.js';
 import { claimRunner } from '../execution/ownership.js';
 
 export type DatasetRow = {
   id:string; schema_version:2; timestamp:string|null; ingested_at:string;
-  symbol:string; source:'decision'|'rejection'|'execution'|'live';
+  symbol:string; source:'decision'|'rejection'|'execution'|'live'|'prediction'|'meme_research';
   action:string; entry_price:number|null; expected_return_bps:number|null;
   edge_proxy_bps:number|null; spread_bps:number|null; setup_quality:number|null;
   worth_trading:number|null; toxicity:number|null; prediction_confidence:number|null;
   stop_price:number|null; take_profit_1:number|null; take_profit_2:number|null;
   historical_context:Record<string,number|null>; venue_history:unknown; golden:unknown;
   reason:string|null; execution:unknown; realized_pnl_usd:number|null;
+  prediction_event:unknown; meme_research:unknown;
   source_ref:string; data_available:boolean;
 };
 const numeric=(value:unknown):number|null=>typeof value==='number'&&Number.isFinite(value)?value:null;
@@ -33,7 +35,7 @@ function curate(entry:any,source:DatasetRow['source'],sourceRef:string,ingestedA
     setup_quality:numeric(entry.answers?.setup_quality?.noul),worth_trading:numeric(entry.answers?.worth_trading?.noul),toxicity:numeric(entry.answers?.toxicity?.noul),prediction_confidence:numeric(snapshot.prediction_confidence),
     stop_price:price===null?null:price*(1-envNumber('EXIT_STOP_LOSS_PCT')/100),take_profit_1:numeric(golden?.swing_high),take_profit_2:numeric(golden?.sell_target),
     historical_context:context,venue_history:snapshot.venue_history??null,golden,
-    reason:entry.policyDecision?.reason??entry.exitSignal?.reason??entry.reason??null,execution:entry.executed??null,realized_pnl_usd:numeric(entry.realizedPnl),source_ref:sourceRef,data_available:price!==null};
+    reason:entry.policyDecision?.reason??entry.exitSignal?.reason??entry.reason??null,execution:entry.executed??null,realized_pnl_usd:numeric(entry.realizedPnl),meme_research:source==='meme_research'?entry.research:null,prediction_event:source==='prediction'?entry:null,source_ref:sourceRef,data_available:price!==null};
 }
 
 /** Historical rows retain their original observations; fresh prices are separate live rows. */
@@ -41,13 +43,22 @@ export async function buildTradingDataset(logDir=path.join(process.cwd(),'logs')
   const ingestedAt=new Date().toISOString(),rows:DatasetRow[]=[];
   let files:string[]=[];try{files=await fs.readdir(logDir);}catch(error:any){if(error.code!=='ENOENT')throw error;}
   for(const file of files.sort()) {
-    const match=/^(decisions|rejections|execution)-.*\.jsonl$/.exec(file);if(!match)continue;
-    const source=match[1]==='decisions'?'decision':match[1]==='rejections'?'rejection':'execution';
+    const match=/^(decisions|rejections|execution|predictions)-.*\.jsonl$/.exec(file);if(!match)continue;
+    const source=match[1]==='decisions'?'decision':match[1]==='rejections'?'rejection':match[1]==='predictions'?'prediction':'execution';
     const lines=(await fs.readFile(path.join(logDir,file),'utf8')).split('\n');
     lines.forEach((line,index)=>{if(!line.trim())return;let record;try{record=JSON.parse(line);}catch{return;}
       if(record&&typeof record==='object')rows.push(curate(record,source,`${file}:${index+1}`,ingestedAt));
     });
   }
+  try {
+    const file=path.join(path.dirname(logDir),'reports/meme-research.json');
+    const report=JSON.parse(await fs.readFile(file,'utf8'));
+    for(const candidate of report.candidates??[]) {
+      const cb=candidate.venues?.find((v:any)=>v.exchange==='coinbase');
+      const snapshot={symbol:candidate.symbol,bid:cb?.bid,ask:cb?.ask,mid:cb?(cb.bid+cb.ask)/2:undefined,spread_bps:candidate.coinbase_spread_bps,golden:candidate.fibonacci_projection};
+      rows.push(curate({timestamp:report.timestamp,snapshot,research:candidate},'meme_research',`meme-research.json:${candidate.symbol}`,ingestedAt));
+    }
+  }catch(error:any){if(error.code!=='ENOENT')throw error;}
   const live=snapshots??await scanProducts();
   for(const snapshot of live)rows.push(curate(snapshot,'live',`market:${snapshot.symbol}:${snapshot.timestamp}`,ingestedAt));
   return rows.sort((a,b)=>(a.timestamp??'').localeCompare(b.timestamp??'')||a.id.localeCompare(b.id));
@@ -57,7 +68,7 @@ export async function writeDatasetToFile(outputPath=path.join(process.cwd(),'log
   await fs.mkdir(path.dirname(outputPath),{recursive:true});
   const temp=`${outputPath}.${process.pid}.tmp`;
   await fs.writeFile(temp,dataset.map(row=>JSON.stringify(row)).join('\n')+(dataset.length?'\n':''));await fs.rename(temp,outputPath);
-  const counts=Object.fromEntries(['decision','rejection','execution','live'].map(source=>[source,dataset.filter(row=>row.source===source).length]));
+  const counts=Object.fromEntries(['decision','rejection','execution','live','prediction','meme_research'].map(source=>[source,dataset.filter(row=>row.source===source).length]));
   const manifest={schema_version:2,generated_at:new Date().toISOString(),refresh_interval_ms:envNumber('DATASET_REFRESH_MS'),path:outputPath,row_count:dataset.length,counts,notes:['Historical observations are never overwritten with current prices.','Unknown values remain null. Edge proxy and projected margin are not realized returns.','All trade outcomes are exchange-confirmed or explicitly paper-mode events.'],current_symbols:dataset.filter(row=>row.source==='live').map(row=>row.symbol)};
   const dir=path.join(path.dirname(path.dirname(outputPath)),'reports');await fs.mkdir(dir,{recursive:true});
   const manifestTemp=path.join(dir,`dataset-manifest.${process.pid}.tmp`);await fs.writeFile(manifestTemp,JSON.stringify(manifest,null,2));await fs.rename(manifestTemp,path.join(dir,'dataset-manifest.json'));
@@ -71,6 +82,7 @@ export async function refreshDatasetOnce(force=false) {
   const release=claimRunner(path.join(process.cwd(),'state/dataset-refresh.pid'));
   try {
     const dataset=await writeDatasetToFile();
+    await writePredictionStudy();
     nextRun=Math.floor(Date.now()/interval)*interval+interval;
     await fs.writeFile(stateFile,JSON.stringify({nextRun}));
     console.log(`[dataset] Refreshed ${dataset.length} curated rows; next ${new Date(nextRun).toISOString()}`);

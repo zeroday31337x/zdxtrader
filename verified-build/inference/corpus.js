@@ -28,10 +28,10 @@ export async function buildEvidence(root = process.cwd()) {
             }
             if (!/\.(json|jsonl|csv)$/.test(entry.name) || /meta-|correlation-agent|rejections-|protocol/.test(entry.name))
                 continue;
-            if (dir === 'logs' && !/^(decisions|execution)-/.test(entry.name) && entry.name !== 'market-dataset.jsonl')
+            if (dir === 'logs' && !/^(decisions|execution|predictions)-/.test(entry.name) && entry.name !== 'market-dataset.jsonl')
                 continue;
             const stat = await fs.stat(path.join(root, file));
-            candidates.push({ file, modified: stat.mtimeMs, priority: entry.name === 'market-dataset.jsonl' || entry.name === 'dataset-manifest.json' ? 0 : entry.name === 'latest-analysis.json' || entry.name === 'correlations.json' ? 1 : 2 });
+            candidates.push({ file, modified: stat.mtimeMs, priority: entry.name === 'meme-research.json' || entry.name === 'market-dataset.jsonl' || entry.name === 'dataset-manifest.json' ? 0 : entry.name === 'latest-analysis.json' || entry.name === 'correlations.json' ? 1 : 2 });
         }
     }
     await walk('reports');

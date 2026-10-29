@@ -5,6 +5,7 @@ import { choice, noul } from '../judge/index.js';
  * Send only the fields the questions read.
  */
 export const gamblerQuestions = {
+    confidence: noul('How strong is the supplied evidence supporting this purchase? This is a sizing confidence score, not an established probability of profit.'),
     regime: choice('Using venue_history from Coinbase, Binance.com, Binance.US and Crypto.com when available, compare completed candle trends and identify the current regime. Missing venues are not agreement. USD and USDT quotes are distinct.', {
         trending_up: 'Clear directional move higher',
         trending_down: 'Clear directional move lower',

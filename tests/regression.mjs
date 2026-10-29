@@ -7,7 +7,7 @@ import { decideGambler } from '../verified-build/policy/index.js';
 import { Book } from '../verified-build/book/index.js';
 import { CoinbaseBroker } from '../verified-build/broker/coinbase.js';
 const noul = n => ({ type: 'noul', noul: n });
-const answers = () => ({ setup_quality: noul(.8), worth_trading: noul(.9), toxicity: noul(.1), regime: { type: 'choice', choice: 'trending_up' } });
+const answers = () => ({ confidence:noul(.8), setup_quality: noul(.8), worth_trading: noul(.9), toxicity: noul(.1), regime: { type: 'choice', choice: 'trending_up' } });
 test('valid setup passes and sizes from actual quality', () => {
  assert.deepEqual(decideGambler(answers(), {}), { action: 'long', size: 9, reason: 'policy approved' });
 });
@@ -49,7 +49,7 @@ import { RiskEngine } from '../verified-build/risk/engine.js';
 import { PaperBroker } from '../verified-build/broker/paper.js';
 import { decideMeme } from '../verified-build/policy/index.js';
 import { completedCandles, historyFeatures, filterMemeCandidates, scanProducts, SHORT_PRODUCTS, MEME_PRODUCTS } from '../verified-build/state/scanner.js';
-for (const value of [0, .1, .5, .65, .8, 1]) test(`fixed $9 sizing for probability ${value}`,()=>{const n=tradeSize(value);assert.equal(n,9);});
+for(const [confidence,expected] of [[0,1],[.3,1],[.55,5],[.8,9],[1,9]])test(`confidence ${confidence} sizes to $${expected} under $9 fixture cap`,()=>assert.equal(tradeSize(confidence),expected));
 for (const value of [NaN,Infinity,-1,0,.99,9.01,10,10.01,100]) {
  test(`all order entry boundaries reject ${value}`,async()=>{
   assert.throws(()=>assertTradeSize(value));

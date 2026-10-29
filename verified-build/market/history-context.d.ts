@@ -1,4 +1,5 @@
 export type Bar = {
+    open?: number;
     start: number;
     close: number;
     high: number;

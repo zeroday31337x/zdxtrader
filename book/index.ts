@@ -1,3 +1,4 @@
+import { subtractQuantity } from '../execution/quantity.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -49,10 +50,10 @@ export class Book {
   }
   applySale(quantity:string) {
     if(this.open?.status!=='pending'||this.open.pendingSide!=='sell'||!this.open.quantity)throw Error('Pending owned sale required');
-    const before=Number(this.open.quantity),remaining=before-Number(quantity);
+    const before=Number(this.open.quantity),remainingText=subtractQuantity(this.open.quantity,quantity),remaining=Number(remainingText);
     if(!Number.isFinite(remaining)||remaining<0)throw Error('Invalid confirmed sale quantity');
     if(remaining===0){this.close();return;}
-    this.open={...this.open,quantity:remaining.toFixed(18),size:this.open.size*remaining/before,fees:(this.open.fees??0)*remaining/before,status:'open',pendingSide:undefined,clientOrderId:undefined};this.save();
+    this.open={...this.open,quantity:remainingText,size:this.open.size*remaining/before,fees:(this.open.fees??0)*remaining/before,status:'open',pendingSide:undefined,clientOrderId:undefined};this.save();
   }
   getOpen() { return this.open; }
 }

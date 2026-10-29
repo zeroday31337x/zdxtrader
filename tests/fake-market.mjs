@@ -9,7 +9,7 @@ globalThis.fetch=async input=>{
  else if(url.pathname.endsWith('/products/TEST-USD'))data={product_type:'SPOT',quote_currency_id:'USD',status:'online',quote_min_size:'1',quote_max_size:'1000',base_min_size:'0.000001',base_increment:'0.000001'};
  else if(url.pathname.endsWith('/klines')) data=bars.map(b=>[b.start*1000,b.close,b.high,b.low,b.close,b.volume]);
  else if(url.pathname.endsWith('bookTicker'))data={bidPrice:'164',askPrice:'166'};
- else if(url.pathname.endsWith('public/get-candlestick'))data={code:0,result:{data:bars.map(b=>({t:b.start*1000,c:b.close,h:b.high,l:b.low,v:b.volume}))}};
+ else if(url.pathname.endsWith('public/get-candlestick'))data={code:0,result:{data:bars.map(b=>({t:b.start*1000,o:b.close,c:b.close,h:b.high,l:b.low,v:b.volume}))}};
  else if(url.pathname.endsWith('public/get-book'))data={code:0,result:{data:[{bids:[['164','100','1']],asks:[['166','100','1']]}]}};
  else throw Error(`Unexpected offline URL: ${url.pathname}`);
  return new Response(JSON.stringify(data),{status:200});
